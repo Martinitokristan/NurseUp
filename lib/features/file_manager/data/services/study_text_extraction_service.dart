@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class StudyTextExtractionException implements Exception {
@@ -48,21 +50,31 @@ class StudyTextExtractionService {
       throw const StudyTextExtractionException('Word documents are not supported on this device yet. Please export the document as PDF or TXT, then upload it again.');
     }
 
-    throw const StudyTextExtractionException('This file type is not supported yet. Please upload a PDF, TXT, JPG, PNG, or WEBP file.');
+    throw const StudyTextExtractionException('Please upload PDF, TXT, JPG, PNG, or WEBP.');
   }
 
   Future<StudyTextExtractionResult> _extractImage({required Uint8List bytes, required String fileName, String? path}) async {
-    if (path == null || path.isEmpty) {
-      throw const StudyTextExtractionException('I could not read this image from the selected app. Please try Camera, Gallery, or download the file first.');
+    String imagePath = path ?? '';
+    File? tempFile;
+
+    if (imagePath.isEmpty) {
+      final tempDir = await getTemporaryDirectory();
+      final extension = p.extension(fileName).isNotEmpty ? p.extension(fileName) : '.jpg';
+      tempFile = File('${tempDir.path}/nurseup_ocr_${DateTime.now().millisecondsSinceEpoch}$extension');
+      await tempFile.writeAsBytes(bytes, flush: true);
+      imagePath = tempFile.path;
     }
 
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
-      final inputImage = InputImage.fromFilePath(path);
+      final inputImage = InputImage.fromFilePath(imagePath);
       final recognizedText = await recognizer.processImage(inputImage);
       return _validate(recognizedText.text, 'ocr');
     } finally {
       await recognizer.close();
+      if (tempFile != null && await tempFile.exists()) {
+        await tempFile.delete();
+      }
     }
   }
 
@@ -73,14 +85,14 @@ class StudyTextExtractionService {
       document.dispose();
       return _validate(text, 'pdf_text');
     } catch (_) {
-      throw const StudyTextExtractionException('I could not read text from this PDF. If it is scanned, please upload a clearer image or a PDF with selectable text.');
+      throw const StudyTextExtractionException("I couldn't read text from this PDF. If it is scanned, please upload a clearer image or a PDF with selectable text.");
     }
   }
 
   StudyTextExtractionResult _validate(String rawText, String method) {
     final cleaned = clean(rawText);
     if (cleaned.length < minimumReadableCharacters || cleaned.split(RegExp(r'\s+')).length < 12) {
-      throw const StudyTextExtractionException('I couldn’t read enough text from this file. Please try a clearer photo or another document.');
+      throw const StudyTextExtractionException("We couldn't read enough text from this file. Please try a clearer photo or another document.");
     }
     return StudyTextExtractionResult(text: cleaned, method: method);
   }

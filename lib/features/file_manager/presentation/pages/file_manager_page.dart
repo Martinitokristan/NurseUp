@@ -8,6 +8,7 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/app_gradient_card.dart';
+import '../../domain/entities/study_file_entity.dart';
 import '../providers/file_manager_provider.dart';
 
 class FileManagerPage extends ConsumerWidget {
@@ -52,7 +53,7 @@ class FileManagerPage extends ConsumerWidget {
               const Text('Recent Files', style: AppTextStyles.h2),
               const SizedBox(height: AppSpacing.md),
               filesAsync.when(
-                data: (files) => Column(children: files.map((file) => _file(context, file.name, '${(file.sizeBytes / 1000000).toStringAsFixed(1)} MB · ${file.type.toUpperCase()}')).toList()),
+                data: (files) => Column(children: files.map((file) => _file(context, file)).toList()),
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (_, _) => const Text('Unable to load files.'),
               ),
@@ -64,7 +65,8 @@ class FileManagerPage extends ConsumerWidget {
     );
   }
 
-  Widget _file(BuildContext context, String name, String meta) {
+  Widget _file(BuildContext context, StudyFileEntity file) {
+    final meta = '${(file.sizeBytes / 1000000).toStringAsFixed(1)} MB · ${file.type.toUpperCase()}';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: AppGradientCard(
@@ -72,8 +74,8 @@ class FileManagerPage extends ConsumerWidget {
         child: Row(children: [
           Container(width: 48, height: 48, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.description_rounded, color: AppColors.primary)),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: AppTextStyles.h3), const SizedBox(height: 4), Text(meta, style: AppTextStyles.caption)])),
-          IconButton(onPressed: () => context.push(AppRoutes.reviewerGenerating), icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary)),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(file.name, style: AppTextStyles.h3), const SizedBox(height: 4), Text(meta, style: AppTextStyles.caption)])),
+          IconButton(onPressed: () => context.push('${AppRoutes.reviewerGenerating}?fileId=${file.id}'), icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary)),
         ]),
       ),
     );

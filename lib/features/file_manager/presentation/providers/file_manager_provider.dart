@@ -105,23 +105,32 @@ class FileUploadController extends StateNotifier<FileUploadState> {
   Future<bool> uploadWithText(String fileText, String fileName) async {
     try {
       _ensureReady();
-      state = const FileUploadState(isUploading: true, message: 'Uploading to Cloudinary...');
+      state = const FileUploadState(isUploading: true, message: 'Reading text...');
+      final cleanedText = StudyTextExtractionService.clean(fileText);
+      if (cleanedText.length < StudyTextExtractionService.minimumReadableCharacters) {
+        state = const FileUploadState(errorMessage: 'I could not read enough text from this file. Please try a clearer document.');
+        return false;
+      }
       final bytes = Uint8List.fromList(fileText.codeUnits);
       final user = FirebaseAuth.instance.currentUser!;
       final type = fileName.split('.').last.toLowerCase();
       final fileDoc = FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').doc();
 
+      state = const FileUploadState(isUploading: true, message: 'Uploading...');
       final upload = await CloudinaryService.instance.uploadPdf(
         bytes: bytes,
         fileName: fileName,
       );
 
-      state = const FileUploadState(isUploading: true, message: 'Saving file metadata...');
+      state = const FileUploadState(isUploading: true, message: 'Saving...');
       await fileDoc.set({
         'userId': user.uid,
         'name': fileName,
         'sizeBytes': bytes.length,
         'type': type,
+        'mimeType': 'text/plain',
+        'extractedText': cleanedText,
+        'extractionMethod': 'plain_text',
         'cloudinaryPublicId': upload.publicId,
         'cloudinaryResourceType': upload.resourceType,
         'downloadUrl': upload.secureUrl,
@@ -186,7 +195,7 @@ class FileUploadController extends StateNotifier<FileUploadState> {
   }
 
   /// Pick, upload and generate reviewer — also uses FileType.any for
-  /// broader app compatibility.
+  /// broader app compatibility. Now includes text extraction.
   Future<bool> pickUploadAndGenerate() async {
     try {
       _ensureReady();
@@ -201,12 +210,12 @@ class FileUploadController extends StateNotifier<FileUploadState> {
       }
 
       final platformFile = result.files.single;
-      
+
       // Validate the file extension
       final extension = platformFile.extension?.toLowerCase() ?? '';
       if (!_supportedExtensions.contains(extension)) {
         state = FileUploadState(
-          errorMessage: 'Unsupported file type ".$extension". Please choose a PDF, DOCX, TXT, PPTX, or other document file.',
+          errorMessage: 'Please upload PDF, TXT, JPG, PNG, or WEBP.',
         );
         return false;
       }
@@ -216,18 +225,30 @@ class FileUploadController extends StateNotifier<FileUploadState> {
       final type = platformFile.extension?.toLowerCase() ?? 'file';
       final fileDoc = FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').doc();
 
-      state = const FileUploadState(isUploading: true, message: 'Uploading to Cloudinary...');
+      // Extract text before uploading
+      state = FileUploadState(isUploading: true, message: 'Reading ${platformFile.name}...');
+      final extraction = await _extractor.extract(
+        bytes: bytes,
+        fileName: platformFile.name,
+        mimeType: platformFile.extension != null ? 'application/${platformFile.extension}' : null,
+        path: platformFile.path,
+      );
+
+      state = FileUploadState(isUploading: true, message: 'Uploading ${platformFile.name}...');
       final upload = await CloudinaryService.instance.uploadPdf(
         bytes: bytes,
         fileName: platformFile.name,
       );
 
-      state = const FileUploadState(isUploading: true, message: 'Saving file metadata...');
+      state = FileUploadState(isUploading: true, message: 'Saving ${platformFile.name}...');
       await fileDoc.set({
         'userId': user.uid,
         'name': platformFile.name,
         'sizeBytes': bytes.length,
         'type': type,
+        'mimeType': platformFile.extension != null ? 'application/${platformFile.extension}' : null,
+        'extractedText': extraction.text,
+        'extractionMethod': extraction.method,
         'cloudinaryPublicId': upload.publicId,
         'cloudinaryResourceType': upload.resourceType,
         'downloadUrl': upload.secureUrl,
@@ -259,7 +280,7 @@ class FileUploadController extends StateNotifier<FileUploadState> {
   String _friendlyFileError(dynamic error) {
     final msg = error.toString().toLowerCase();
     if (msg.contains('permission') || msg.contains('denied')) {
-      return 'Permission denied. Please allow file access in your device settings.';
+      return 'Permission denied. Please allow access in your device settings.';
     }
     if (msg.contains('storage') && msg.contains('quota')) {
       return 'Storage quota exceeded. Please upgrade your plan or free up space.';
@@ -275,6 +296,15 @@ class FileUploadController extends StateNotifier<FileUploadState> {
     }
     if (msg.contains('sign in') || msg.contains('current user')) {
       return 'Please sign in before uploading files.';
+    }
+    if (msg.contains("couldn't read") || msg.contains('could not read')) {
+      return 'I could not read enough text from this file. Please try a clearer photo or another document.';
+    }
+    if (msg.contains('unsupported') || msg.contains('not supported')) {
+      return 'Please upload PDF, TXT, JPG, PNG, or WEBP.';
+    }
+    if (msg.contains('word documents') || msg.contains('doc') || msg.contains('docx')) {
+      return 'Word documents are not supported yet. Please export as PDF or TXT, then upload.';
     }
     if (msg.contains('unable to read')) {
       return 'Unable to read the selected file. Please try a different file.';

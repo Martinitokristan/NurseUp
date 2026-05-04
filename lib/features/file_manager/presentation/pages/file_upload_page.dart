@@ -160,10 +160,28 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     }
   }
 
+  Future<FilePickerResult?> _pickStudyFilesFromProviders() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'webp'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result != null && result.files.isNotEmpty) return result;
+    return FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: true,
+      withData: true,
+    );
+  }
+
   Future<void> _pickFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true, withData: true);
-      if (result == null || result.files.isEmpty) return;
+      final result = await _pickStudyFilesFromProviders();
+      if (result == null || result.files.isEmpty) {
+        _showSnackBar('No file selected. Tap the menu icon to choose Downloads, Drive, WPS Office, or another app.');
+        return;
+      }
       final selected = <_SelectedUploadFile>[];
       for (final file in result.files) {
         final bytes = await _readPlatformFileBytes(file);
@@ -176,7 +194,7 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
       }
       if (selected.isNotEmpty) setState(() => _files.addAll(selected));
     } catch (error) {
-      _showSnackBar('Unable to open file picker: $error');
+      _showSnackBar('Unable to open file picker. Please try Downloads, Drive, WPS Office, or another file app.');
     }
   }
 
@@ -314,7 +332,7 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     final router = GoRouter.of(context);
     final usageController = ref.read(usageControllerProvider.notifier);
     final uploadFiles = _files
-        .map((file) => PickedUploadFile(name: file.name, bytes: file.bytes, extension: file.extension, mimeType: file.mimeType))
+        .map((file) => PickedUploadFile(name: file.name, bytes: file.bytes, extension: file.extension, mimeType: file.mimeType, path: file.path))
         .toList();
     final uploadedIds = await ref.read(fileUploadControllerProvider.notifier).uploadSelectedFiles(uploadFiles);
     if (!mounted) return;
@@ -431,18 +449,19 @@ class _UploadSourceTile extends StatelessWidget {
 }
 
 class _SelectedUploadFile {
-  const _SelectedUploadFile({required this.name, required this.bytes, required this.extension, required this.mimeType});
+  const _SelectedUploadFile({required this.name, required this.bytes, required this.extension, required this.mimeType, this.path});
 
   factory _SelectedUploadFile.fromBytes({required String name, required Uint8List bytes, String? path, String? mimeType}) {
     final resolvedMimeType = mimeType ?? lookupMimeType(path ?? name, headerBytes: bytes);
     final extension = p.extension(name).replaceFirst('.', '').toLowerCase();
-    return _SelectedUploadFile(name: name, bytes: bytes, extension: extension.isEmpty ? 'file' : extension, mimeType: resolvedMimeType);
+    return _SelectedUploadFile(name: name, bytes: bytes, extension: extension.isEmpty ? 'file' : extension, mimeType: resolvedMimeType, path: path);
   }
 
   final String name;
   final Uint8List bytes;
   final String extension;
   final String? mimeType;
+  final String? path;
 
   int get sizeBytes => bytes.length;
   bool get isImage => mimeType?.startsWith('image/') == true;
