@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Per-user usage tracking doc at users/{uid}/usage/current
+      match /usage/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Uploaded study files (per-user)
+    match /study_files/{userId}/docs/{fileId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /reviewer_jobs/{jobId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /reviewers/{userId}/docs/{reviewerId} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Subscription doc — the user may read and update their own paid activation.
+    match /subscriptions/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Public catalog: plans are readable by any signed-in user, writable only
+    // from the admin console / seeder (default-deny).
+    match /plans/{planId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

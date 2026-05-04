@@ -1,0 +1,71 @@
+name: nurseup
+description: AI-powered study companion for Filipino nursing students
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  go_router: ^14.0.0
+  firebase_core: ^3.3.0
+  firebase_auth: ^5.1.4
+  cloud_firestore: ^5.2.1
+  google_sign_in: ^6.2.1
+  cloudinary_flutter: ^1.0.0
+  cloudinary_url_gen: ^1.0.0
+  flutter_dotenv: ^5.1.0
+  flutter_animate: ^4.5.0
+  flutter_svg: ^2.0.10
+  file_picker: ^8.0.0
+  image_picker: ^1.1.2
+  permission_handler: ^11.3.1
+  mime: ^1.0.5
+  path: ^1.9.0
+  google_mlkit_text_recognition: ^0.14.0
+  syncfusion_flutter_pdf: ^25.1.0
+  open_file: ^3.5.4
+  share_plus: ^10.0.0
+  path_provider: ^2.1.3
+  model_viewer_plus: ^1.7.0
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.3
+  dartz: ^0.10.1
+  get_it: ^7.7.0
+  logger: ^2.4.0
+  equatable: ^2.0.5
+  intl: ^0.19.0
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.9
+  mocktail: ^1.0.4
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/images/nurseup_logo.png"
+  remove_alpha_ios: true
+  background_color_ios: "#EAF4FF"
+  adaptive_icon_background: "#EAF4FF"
+  adaptive_icon_foreground: "assets/images/nurseup_logo.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/animations/
+    - assets/images/
+    - assets/icons/
+    - .env
+  # NOTE: 3D anatomy GLB models are intentionally NOT bundled (they total ~170MB).
+  # They live in `models_offline/anatomy/` and are loaded from network at runtime
+  # via `lib/core/config/app_config.dart -> kAnatomyModelBaseUrl`.
+  # Upload them to Firebase Storage / a CDN and set the base URL there.
