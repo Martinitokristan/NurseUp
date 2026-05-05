@@ -171,7 +171,7 @@ class ProfilePage extends ConsumerWidget {
               ref.invalidate(flashcardsProvider);
               ref.invalidate(usageProvider);
               ref.invalidate(subscriptionDocProvider);
-              if (context.mounted) context.go(AppRoutes.login);
+              if (context.mounted) context.go(AppRoutes.onboarding);
             },
             child: const Text('Sign out', style: TextStyle(color: Color(0xFFEF4444))),
           ),

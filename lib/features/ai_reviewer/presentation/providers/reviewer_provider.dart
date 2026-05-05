@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -21,7 +22,6 @@ final flashcardsProvider = StreamProvider<List<FlashcardEntity>>((ref) {
       .collection('flashcards')
       .doc(user.uid)
       .collection('docs')
-      .where('userId', isEqualTo: user.uid)
       .orderBy('createdAt', descending: true)
       .snapshots()
       .map((snapshot) {
@@ -41,7 +41,6 @@ final reviewersProvider = StreamProvider<List<ReviewerEntity>>((ref) {
       .collection('reviewers')
       .doc(user.uid)
       .collection('docs')
-      .where('userId', isEqualTo: user.uid)
       .orderBy('createdAt', descending: true)
       .snapshots()
       .map((snapshot) {
@@ -95,10 +94,16 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
 
   final _groq = const GroqRemoteDatasource();
 
+  User _requireUser() {
+    if (Firebase.apps.isEmpty) throw StateError('Firebase is not ready.');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('Please sign in before generating reviewers.');
+    return user;
+  }
+
   Future<bool> generateFromFile(String fileId) async {
     try {
-      _ensureReady();
-      final user = FirebaseAuth.instance.currentUser!;
+      final user = _requireUser();
       state = const GenerateReviewerState(isGenerating: true, message: 'Reading your file...');
       final fileDoc = await FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').doc(fileId).get();
       final fileData = fileDoc.data();
@@ -115,7 +120,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
 
   Future<bool> generateReviewer({required String fileId, required String fileName, required String extractedText}) async {
     try {
-      _ensureReady();
+      final user = _requireUser();
       state = const GenerateReviewerState(isGenerating: true, message: 'Creating your reviewer...');
       final result = await _groq.generateReviewer(extractedText, fileName);
       final cleanResult = _cleanJsonResponse(result);
@@ -139,9 +144,9 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
         throw const GroqReviewerException('empty_generated_content');
       }
 
-      state = const GenerateReviewerState(isGenerating: true, message: 'Saving flashcards...');
-      final user = FirebaseAuth.instance.currentUser!;
+      state = const GenerateReviewerState(isGenerating: true, message: 'Saving reviewer...');
       final doc = FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').doc();
+      debugPrint('[NurseUp] Saving reviewer uid=${user.uid} path=${doc.path}');
 
       await doc.set({
         'userId': user.uid,
@@ -237,12 +242,6 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
   List<String> _stringList(dynamic value) {
     if (value is List) return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
     return [];
-  }
-
-  void _ensureReady() {
-    if (Firebase.apps.isEmpty || FirebaseAuth.instance.currentUser == null) {
-      throw StateError('Please sign in before generating reviewers.');
-    }
   }
 
   Map<String, dynamic> _tryParseReviewerJson(String value) {

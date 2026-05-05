@@ -41,7 +41,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           location == AppRoutes.onboarding ||
           location == AppRoutes.splash;
 
-      if (user == null && !isAuthPage) return AppRoutes.login;
+      if (user == null && !isAuthPage) return AppRoutes.onboarding;
       if (user != null && isAuthPage && location != AppRoutes.splash) {
         return AppRoutes.home;
       }

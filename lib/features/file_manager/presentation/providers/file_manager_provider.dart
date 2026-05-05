@@ -24,7 +24,6 @@ final userFilesProvider = StreamProvider<List<StudyFileEntity>>((ref) {
       .collection('study_files')
       .doc(user.uid)
       .collection('docs')
-      .where('userId', isEqualTo: user.uid)
       .orderBy('uploadedAt', descending: true)
       .snapshots()
       .map((snapshot) {

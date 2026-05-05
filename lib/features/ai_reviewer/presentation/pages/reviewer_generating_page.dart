@@ -6,6 +6,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/reviewer_provider.dart';
 
 class ReviewerGeneratingPage extends ConsumerStatefulWidget {
@@ -24,6 +25,33 @@ class _ReviewerGeneratingPageState extends ConsumerState<ReviewerGeneratingPage>
   Widget build(BuildContext context) {
     final effectiveFileId = widget.fileId ?? GoRouterState.of(context).uri.queryParameters['fileId'];
     final controller = ref.watch(generateReviewerControllerProvider);
+    final authAsync = ref.watch(authStateProvider);
+    final user = authAsync.valueOrNull;
+
+    if (authAsync.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+    }
+
+    if (user == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Please sign in before generating reviewers.', textAlign: TextAlign.center, style: AppTextStyles.bodySmall),
+                const SizedBox(height: AppSpacing.lg),
+                OutlinedButton(
+                  onPressed: () => context.go(AppRoutes.onboarding),
+                  child: const Text('Get Started'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     if (!_started && effectiveFileId != null && effectiveFileId.isNotEmpty) {
       _started = true;
