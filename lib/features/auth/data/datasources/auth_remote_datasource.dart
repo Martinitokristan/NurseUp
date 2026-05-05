@@ -53,14 +53,42 @@ class AuthRemoteDatasource {
 
   Future<void> signOut() async {
     _ensureFirebaseReady();
-    await Future.wait([auth.signOut(), _googleSignIn.signOut()]);
+    await _googleSignIn.signOut();
+    await _googleSignIn.disconnect().catchError((_) => null);
+    await auth.signOut();
   }
 
   Future<UserModel> _persistSignedInUser(User? user) async {
     if (user == null) throw FirebaseAuthException(code: 'missing-user', message: 'No user returned from Firebase Auth.');
     final model = UserModel.fromFirebaseUser(user);
     await firestore.collection('users').doc(user.uid).set({...model.toMap(), 'photoUrl': user.photoURL, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    await _initializeUsageDocIfMissing(user.uid);
     return model;
+  }
+
+  Future<void> _initializeUsageDocIfMissing(String uid) async {
+    final usageDoc = firestore.collection('users').doc(uid).collection('usage').doc('current');
+    final usageSnap = await usageDoc.get();
+    if (!usageSnap.exists) {
+      await usageDoc.set({
+        'words_used_this_week': 0,
+        'week_reset_date': Timestamp.fromDate(_nextMonday()),
+        'tier': 'free',
+        'files_uploaded': 0,
+        'reviewers_generated': 0,
+        'streak': 0,
+        'last_active_date': null,
+        'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  DateTime _nextMonday() {
+    final now = DateTime.now();
+    var daysUntilMonday = DateTime.monday - now.weekday;
+    if (daysUntilMonday <= 0) daysUntilMonday += 7;
+    return DateTime(now.year, now.month, now.day).add(Duration(days: daysUntilMonday));
   }
 
   void _ensureFirebaseReady() {

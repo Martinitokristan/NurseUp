@@ -23,8 +23,7 @@ service cloud.firestore {
     }
 
     match /reviewers/{userId}/docs/{reviewerId} {
-      allow read, delete: if request.auth != null && request.auth.uid == userId;
-      allow write: if false;
+      allow read, create, update, delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // Flashcards per user

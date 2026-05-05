@@ -3,19 +3,30 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/usage_model.dart';
 
 final usageProvider = StreamProvider<UsageModel>((ref) {
-  if (Firebase.apps.isEmpty) return Stream.value(_demoUsage);
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(_demoUsage);
-  return FirebaseFirestore.instance.collection('users').doc(user.uid).collection('usage').doc('current').snapshots().map((doc) {
-    if (!doc.exists) return _demoUsage;
-    return UsageModel.fromFirestore(doc.data()!);
-  });
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(_emptyUsage);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('usage')
+      .doc('current')
+      .snapshots()
+      .map((doc) {
+        if (!doc.exists) return _emptyUsage;
+        return UsageModel.fromFirestore(doc.data()!);
+      });
 });
 
-UsageModel get _demoUsage => UsageModel(
+UsageModel get _emptyUsage => UsageModel(
   wordsUsedThisWeek: 0,
   weekResetDate: DateTime.now().add(const Duration(days: 7)),
   tier: 'free',
@@ -161,8 +172,9 @@ class UsageController extends StateNotifier<UsageState> {
 
   DateTime _nextMonday() {
     final now = DateTime.now();
-    final daysUntilMonday = (DateTime.monday - now.weekday + 7) % 7;
-    return DateTime(now.year, now.month, now.day + daysUntilMonday);
+    var daysUntilMonday = DateTime.monday - now.weekday;
+    if (daysUntilMonday <= 0) daysUntilMonday += 7;
+    return DateTime(now.year, now.month, now.day).add(Duration(days: daysUntilMonday));
   }
 
   void _ensureReady() {

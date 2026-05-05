@@ -5,35 +5,77 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/groq_remote_datasource.dart';
 import '../../domain/entities/reviewer_entity.dart';
 
 final flashcardsProvider = StreamProvider<List<FlashcardEntity>>((ref) {
-  if (Firebase.apps.isEmpty) return Stream.value(const []);
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(const []);
-  return FirebaseFirestore.instance.collection('flashcards').doc(user.uid).collection('docs').orderBy('createdAt', descending: true).snapshots().map((snapshot) {
-    return snapshot.docs.map((doc) => FlashcardEntity.fromDoc(doc)).toList();
-  });
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(const <FlashcardEntity>[]);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('flashcards')
+      .doc(user.uid)
+      .collection('docs')
+      .where('userId', isEqualTo: user.uid)
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((snapshot) {
+        return snapshot.docs.map((doc) => FlashcardEntity.fromDoc(doc)).toList();
+      });
 });
 
 final reviewersProvider = StreamProvider<List<ReviewerEntity>>((ref) {
-  if (Firebase.apps.isEmpty) return Stream.value(_demoReviewers);
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(_demoReviewers);
-  return FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').orderBy('createdAt', descending: true).snapshots().map((snapshot) {
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      return ReviewerEntity(id: doc.id, title: data['title'] as String? ?? 'Generated Reviewer', summary: data['summary'] as String? ?? 'AI-generated nursing reviewer.');
-    }).toList();
-  });
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(const <ReviewerEntity>[]);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('reviewers')
+      .doc(user.uid)
+      .collection('docs')
+      .where('userId', isEqualTo: user.uid)
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((snapshot) {
+        return snapshot.docs.map((doc) {
+          final data = doc.data();
+          return ReviewerEntity(
+            id: doc.id,
+            title: data['title'] as String? ?? 'Generated Reviewer',
+            summary: data['summary'] as String? ?? 'AI-generated nursing reviewer.',
+          );
+        }).toList();
+      });
 });
 
 final reviewerDocumentProvider = StreamProvider.family<Map<String, dynamic>?, String>((ref, reviewerId) {
-  if (Firebase.apps.isEmpty || reviewerId.isEmpty) return Stream.value(null);
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(null);
-  return FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').doc(reviewerId).snapshots().map((doc) => doc.data());
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null || reviewerId.isEmpty) {
+    return Stream.value(null);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('reviewers')
+      .doc(user.uid)
+      .collection('docs')
+      .doc(reviewerId)
+      .snapshots()
+      .map((doc) {
+        final data = doc.data();
+        if (data == null) return null;
+        if (data['userId'] != null && data['userId'] != user.uid) return null;
+        return data;
+      });
 });
 final generateReviewerControllerProvider = StateNotifierProvider<GenerateReviewerController, GenerateReviewerState>((ref) {
   return GenerateReviewerController();
@@ -102,6 +144,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       final doc = FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').doc();
 
       await doc.set({
+        'userId': user.uid,
         'title': title,
         'overview': overview,
         'summary': overview,
@@ -116,6 +159,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       });
 
       await _saveFlashcards(user.uid, doc.id, fileId, flashcards);
+      await _recordReviewerGenerated(user.uid);
 
       state = GenerateReviewerState(message: 'Reviewer generated.', reviewerId: doc.id);
       return true;
@@ -142,6 +186,17 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       });
     }
     await batch.commit();
+  }
+
+  Future<void> _recordReviewerGenerated(String uid) async {
+    final doc = FirebaseFirestore.instance.collection('users').doc(uid).collection('usage').doc('current');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    await doc.set({
+      'reviewers_generated': FieldValue.increment(1),
+      'last_active_date': Timestamp.fromDate(today),
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   List<Map<String, dynamic>> _parseSections(dynamic value) {
@@ -222,7 +277,10 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
     if (msg.contains('timeout') || msg.contains('deadline')) {
       return 'Request timed out. Please try again.';
     }
-    if (msg.contains('sign in') || msg.contains('current user') || msg.contains('permission')) {
+    if (msg.contains('permission-denied') || msg.contains('permission denied')) {
+      return 'Your account does not have permission to save this reviewer. Please refresh the app and try again.';
+    }
+    if (msg.contains('sign in') || msg.contains('current user')) {
       return 'Please sign in before generating reviewers.';
     }
     if (msg.contains('groq') || msg.contains('api') || msg.contains('model')) {
@@ -251,10 +309,6 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
   }
 }
 
-const _demoReviewers = [
-  ReviewerEntity(id: 'brain-reviewer', title: 'Brain Anatomy Reviewer', summary: 'Key brain anatomy concepts with exam tips.'),
-  ReviewerEntity(id: 'cardio-reviewer', title: 'Cardiovascular Nursing Notes', summary: 'Cardiac assessment and nursing interventions.'),
-];
 
 class FlashcardEntity {
   const FlashcardEntity({

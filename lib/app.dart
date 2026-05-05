@@ -15,6 +15,7 @@ import 'features/anatomy_3d/presentation/pages/anatomy_viewer_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/onboarding_page.dart';
 import 'features/auth/presentation/pages/signup_page.dart';
+import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/file_manager/presentation/pages/file_manager_page.dart';
 import 'features/file_manager/presentation/pages/file_upload_page.dart';
 import 'features/home/presentation/pages/home_page.dart';
@@ -23,43 +24,67 @@ import 'features/splash/presentation/pages/splash_page.dart';
 import 'features/subscription/presentation/pages/paywall_page.dart';
 import 'features/subscription/presentation/pages/subscription_success_page.dart';
 
+final routerProvider = Provider<GoRouter>((ref) {
+  final authAsync = ref.watch(authStateProvider);
+
+  return GoRouter(
+    initialLocation: AppRoutes.splash,
+    redirect: (context, state) {
+      final isLoading = authAsync.isLoading;
+      final user = authAsync.valueOrNull;
+
+      if (isLoading) return null;
+
+      final location = state.uri.path;
+      final isAuthPage = location == AppRoutes.login ||
+          location == AppRoutes.signup ||
+          location == AppRoutes.onboarding ||
+          location == AppRoutes.splash;
+
+      if (user == null && !isAuthPage) return AppRoutes.login;
+      if (user != null && isAuthPage && location != AppRoutes.splash) {
+        return AppRoutes.home;
+      }
+      return null;
+    },
+    routes: [
+      GoRoute(path: AppRoutes.splash, builder: (_, _) => const SplashPage()),
+      GoRoute(path: AppRoutes.onboarding, builder: (_, _) => const OnboardingPage()),
+      GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
+      GoRoute(path: AppRoutes.signup, builder: (_, _) => const SignupPage()),
+      GoRoute(path: AppRoutes.home, builder: (_, _) => const HomePage()),
+      GoRoute(path: AppRoutes.files, builder: (_, _) => const FileManagerPage()),
+      GoRoute(path: AppRoutes.upload, builder: (_, _) => const FileUploadPage()),
+      GoRoute(path: AppRoutes.reviewers, builder: (_, _) => const ReviewerListPage()),
+      GoRoute(path: AppRoutes.reviewerGenerating, builder: (_, _) => const ReviewerGeneratingPage()),
+      GoRoute(path: AppRoutes.reviewerDetail, builder: (_, state) => ReviewerDetailPage(reviewerId: state.uri.queryParameters['id'], showExportOnOpen: state.uri.queryParameters['export'] == 'true')),
+      GoRoute(path: AppRoutes.anatomy, builder: (_, _) => const AnatomyCatalogPage()),
+      GoRoute(path: AppRoutes.anatomyViewer, builder: (_, _) => const AnatomyViewerPage()),
+      GoRoute(path: AppRoutes.paywall, builder: (_, _) => const PaywallPage()),
+      GoRoute(path: AppRoutes.subscriptionSuccess, builder: (_, _) => const SubscriptionSuccessPage()),
+      GoRoute(path: AppRoutes.profile, builder: (_, _) => const ProfilePage()),
+    ],
+  );
+});
+
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'NurseUp',
       theme: appTheme,
       darkTheme: appDarkTheme,
       themeMode: themeMode,
-      routerConfig: _router,
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-final _router = GoRouter(
-  initialLocation: AppRoutes.splash,
-  routes: [
-    GoRoute(path: AppRoutes.splash, builder: (_, _) => const SplashPage()),
-    GoRoute(path: AppRoutes.onboarding, builder: (_, _) => const OnboardingPage()),
-    GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
-    GoRoute(path: AppRoutes.signup, builder: (_, _) => const SignupPage()),
-    GoRoute(path: AppRoutes.home, builder: (_, _) => const HomePage()),
-    GoRoute(path: AppRoutes.files, builder: (_, _) => const FileManagerPage()),
-    GoRoute(path: AppRoutes.upload, builder: (_, _) => const FileUploadPage()),
-    GoRoute(path: AppRoutes.reviewers, builder: (_, _) => const ReviewerListPage()),
-    GoRoute(path: AppRoutes.reviewerGenerating, builder: (_, _) => const ReviewerGeneratingPage()),
-    GoRoute(path: AppRoutes.reviewerDetail, builder: (_, state) => ReviewerDetailPage(reviewerId: state.uri.queryParameters['id'], showExportOnOpen: state.uri.queryParameters['export'] == 'true')), 
-    GoRoute(path: AppRoutes.anatomy, builder: (_, _) => const AnatomyCatalogPage()),
-    GoRoute(path: AppRoutes.anatomyViewer, builder: (_, _) => const AnatomyViewerPage()),
-    GoRoute(path: AppRoutes.paywall, builder: (_, _) => const PaywallPage()),
-    GoRoute(path: AppRoutes.subscriptionSuccess, builder: (_, _) => const SubscriptionSuccessPage()),
-    GoRoute(path: AppRoutes.profile, builder: (_, _) => const ProfilePage()),
-  ],
-);
 
 ThemeData get appTheme => ThemeData(
   useMaterial3: true,

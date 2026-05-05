@@ -8,19 +8,37 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/cloudinary_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/services/study_text_extraction_service.dart';
 import '../../domain/entities/study_file_entity.dart';
 
 final userFilesProvider = StreamProvider<List<StudyFileEntity>>((ref) {
-  if (Firebase.apps.isEmpty) return Stream.value(const []);
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(const []);
-  return FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').orderBy('uploadedAt', descending: true).snapshots().map((snapshot) {
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      return StudyFileEntity(id: doc.id, name: data['name'] as String? ?? 'Study file', sizeBytes: data['sizeBytes'] as int? ?? 0, type: data['type'] as String? ?? 'pdf', downloadUrl: data['downloadUrl'] as String?);
-    }).toList();
-  });
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(const <StudyFileEntity>[]);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('study_files')
+      .doc(user.uid)
+      .collection('docs')
+      .where('userId', isEqualTo: user.uid)
+      .orderBy('uploadedAt', descending: true)
+      .snapshots()
+      .map((snapshot) {
+        return snapshot.docs.map((doc) {
+          final data = doc.data();
+          return StudyFileEntity(
+            id: doc.id,
+            name: data['name'] as String? ?? 'Study file',
+            sizeBytes: data['sizeBytes'] as int? ?? 0,
+            type: data['type'] as String? ?? 'pdf',
+            downloadUrl: data['downloadUrl'] as String?,
+          );
+        }).toList();
+      });
 });
 
 final freeTierUsageProvider = Provider<int>((ref) {
@@ -61,6 +79,16 @@ class PickedUploadFile {
   final String extension;
   final String? mimeType;
   final String? path;
+}
+
+class UploadedStudyFileResult {
+  const UploadedStudyFileResult({
+    required this.fileId,
+    required this.wordCount,
+  });
+
+  final String fileId;
+  final int wordCount;
 }
 
 class FileUploadController extends StateNotifier<FileUploadState> {
@@ -145,13 +173,13 @@ class FileUploadController extends StateNotifier<FileUploadState> {
     }
   }
 
-  Future<List<String>> uploadSelectedFiles(List<PickedUploadFile> files) async {
+  Future<List<UploadedStudyFileResult>> uploadSelectedFiles(List<PickedUploadFile> files) async {
     try {
       _ensureReady();
       if (files.isEmpty) return const [];
       state = const FileUploadState(isUploading: true, message: 'Uploading to Cloudinary...');
       final user = FirebaseAuth.instance.currentUser!;
-      final uploadedIds = <String>[];
+      final uploaded = <UploadedStudyFileResult>[];
 
       for (final selectedFile in files) {
         state = FileUploadState(isUploading: true, message: 'Reading ${selectedFile.name}...');
@@ -161,6 +189,12 @@ class FileUploadController extends StateNotifier<FileUploadState> {
           mimeType: selectedFile.mimeType,
           path: selectedFile.path,
         );
+
+        final wordCount = extraction.text
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((word) => word.isNotEmpty)
+            .length;
 
         state = FileUploadState(isUploading: true, message: 'Uploading ${selectedFile.name}...');
         final fileDoc = FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').doc();
@@ -177,17 +211,19 @@ class FileUploadController extends StateNotifier<FileUploadState> {
           'type': selectedFile.extension,
           'mimeType': selectedFile.mimeType,
           'extractedText': extraction.text,
+          'wordCount': wordCount,
           'extractionMethod': extraction.method,
           'cloudinaryPublicId': upload.publicId,
           'cloudinaryResourceType': upload.resourceType,
           'downloadUrl': upload.secureUrl,
           'uploadedAt': FieldValue.serverTimestamp(),
         });
-        uploadedIds.add(fileDoc.id);
+        uploaded.add(UploadedStudyFileResult(fileId: fileDoc.id, wordCount: wordCount));
       }
 
-      state = FileUploadState(message: 'Files uploaded.', fileId: uploadedIds.isEmpty ? null : uploadedIds.first, fileIds: uploadedIds);
-      return uploadedIds;
+      final uploadedIds = uploaded.map((r) => r.fileId).toList();
+      state = FileUploadState(message: 'Files uploaded.', fileId: uploaded.isEmpty ? null : uploaded.first.fileId, fileIds: uploadedIds);
+      return uploaded;
     } catch (error) {
       state = FileUploadState(errorMessage: _friendlyFileError(error));
       return const [];

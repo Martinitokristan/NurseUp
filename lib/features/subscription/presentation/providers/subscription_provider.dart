@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/plan_model.dart';
 import '../../data/models/subscription_model.dart';
 
@@ -17,18 +18,22 @@ final demoSubscriptionOverrideProvider = StateProvider<bool>((ref) => false);
 ///   - the user isn't signed in, or
 ///   - the doc doesn't exist yet.
 final subscriptionDocProvider = StreamProvider<SubscriptionModel>((ref) {
-  if (Firebase.apps.isEmpty) return Stream.value(SubscriptionModel.free());
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(SubscriptionModel.free());
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(SubscriptionModel.free());
+  }
+
   return FirebaseFirestore.instance
       .collection('subscriptions')
       .doc(user.uid)
       .snapshots()
       .map((doc) {
-    final data = doc.data();
-    if (data == null) return SubscriptionModel.free();
-    return SubscriptionModel.fromFirestore(data);
-  });
+        final data = doc.data();
+        if (data == null) return SubscriptionModel.free();
+        return SubscriptionModel.fromFirestore(data);
+      });
 });
 
 /// Streams the full `plans` catalog from Firestore, keyed by plan id.

@@ -8,6 +8,7 @@ import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../ai_reviewer/presentation/providers/reviewer_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../file_manager/presentation/providers/file_manager_provider.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
 import '../providers/profile_edit_provider.dart';
 
@@ -165,6 +166,11 @@ class ProfilePage extends ConsumerWidget {
             onPressed: () async {
               Navigator.pop(context);
               await ref.read(authControllerProvider.notifier).signOut();
+              ref.invalidate(userFilesProvider);
+              ref.invalidate(reviewersProvider);
+              ref.invalidate(flashcardsProvider);
+              ref.invalidate(usageProvider);
+              ref.invalidate(subscriptionDocProvider);
               if (context.mounted) context.go(AppRoutes.login);
             },
             child: const Text('Sign out', style: TextStyle(color: Color(0xFFEF4444))),

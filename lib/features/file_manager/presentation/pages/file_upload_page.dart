@@ -334,16 +334,16 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     final uploadFiles = _files
         .map((file) => PickedUploadFile(name: file.name, bytes: file.bytes, extension: file.extension, mimeType: file.mimeType, path: file.path))
         .toList();
-    final uploadedIds = await ref.read(fileUploadControllerProvider.notifier).uploadSelectedFiles(uploadFiles);
+    final uploaded = await ref.read(fileUploadControllerProvider.notifier).uploadSelectedFiles(uploadFiles);
     if (!mounted) return;
-    if (uploadedIds.isEmpty) {
+    if (uploaded.isEmpty) {
       final error = ref.read(fileUploadControllerProvider).errorMessage;
       _showSnackBar(error ?? 'Upload failed. Please try again.');
       return;
     }
-    await usageController.recordUsage(0);
-    await usageController.recordReviewerGenerated();
-    if (mounted) router.push('${AppRoutes.reviewerGenerating}?fileId=${uploadedIds.first}');
+    final totalWords = uploaded.fold<int>(0, (sum, item) => sum + item.wordCount);
+    await usageController.recordUsage(totalWords);
+    if (mounted) router.push('${AppRoutes.reviewerGenerating}?fileId=${uploaded.first.fileId}');
   }
 
   void _showSnackBar(String message) {
