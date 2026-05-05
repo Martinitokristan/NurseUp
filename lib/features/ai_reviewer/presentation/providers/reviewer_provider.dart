@@ -76,14 +76,26 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       _ensureReady();
       state = const GenerateReviewerState(isGenerating: true, message: 'Creating your reviewer...');
       final result = await _groq.generateReviewer(extractedText, fileName);
-      final parsed = _tryParseReviewerJson(result);
+      final cleanResult = _cleanJsonResponse(result);
+      final parsed = _tryParseReviewerJson(cleanResult);
       final title = parsed['title'] as String? ?? 'Study Reviewer';
-      final overview = parsed['overview'] as String? ?? parsed['summary'] as String? ?? 'Your reviewer is ready.';
+      final overview = parsed['overview'] as String? ?? parsed['summary'] as String? ?? '';
       final sections = _parseSections(parsed['sections']);
-      final keyTerms = _parseKeyTerms(parsed['keyTerms']);
+      final keyTerms = _parseKeyTerms(parsed['keyTerms'] ?? parsed['importantTerms']);
       final mustRemember = _stringList(parsed['mustRemember']);
       final practiceQuestions = _parsePracticeQuestions(parsed['practiceQuestions']);
       final flashcards = _parseFlashcards(parsed['flashcards']);
+
+      final hasContent = sections.isNotEmpty ||
+          keyTerms.isNotEmpty ||
+          mustRemember.isNotEmpty ||
+          practiceQuestions.isNotEmpty ||
+          flashcards.isNotEmpty ||
+          (overview.trim().isNotEmpty && overview.trim() != 'Your reviewer is ready.');
+
+      if (!hasContent) {
+        throw const GroqReviewerException('empty_generated_content');
+      }
 
       state = const GenerateReviewerState(isGenerating: true, message: 'Saving flashcards...');
       final user = FirebaseAuth.instance.currentUser!;
@@ -93,7 +105,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
         'title': title,
         'overview': overview,
         'summary': overview,
-        'fullContent': result,
+        'fullContent': cleanResult,
         'sections': sections,
         'keyTerms': keyTerms,
         'mustRemember': mustRemember,
@@ -180,7 +192,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
 
   Map<String, dynamic> _tryParseReviewerJson(String value) {
     try {
-      final decoded = jsonDecode(value);
+      final decoded = jsonDecode(_cleanJsonResponse(value));
       return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
     } catch (_) {
       return <String, dynamic>{};
@@ -193,7 +205,10 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       return 'Network error. Please check your internet connection and try again.';
     }
     if (msg.contains('empty_content')) {
-      return 'I couldn’t read enough text from this file. Please try a clearer photo or another document.';
+      return 'I could not read enough text from this file. Please try a clearer photo or another document.';
+    }
+    if (msg.contains('empty_generated_content')) {
+      return 'The reviewer was created but did not contain readable study content. Please try a clearer file or photo.';
     }
     if (msg.contains('unsupported') || msg.contains('not supported')) {
       return 'This file type is not supported yet. Please upload a PDF, TXT, JPG, PNG, or WEBP file.';
@@ -214,6 +229,25 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       return 'AI service temporarily unavailable. Please try again later.';
     }
     return 'Something went wrong while generating the reviewer. Please try again.';
+  }
+
+  String _cleanJsonResponse(String value) {
+    var cleaned = value.trim();
+
+    cleaned = cleaned
+        .replaceFirst(RegExp(r'^```json\s*', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^```\s*'), '')
+        .replaceFirst(RegExp(r'\s*```$'), '')
+        .trim();
+
+    final firstBrace = cleaned.indexOf('{');
+    final lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1).trim();
+    }
+
+    return cleaned;
   }
 }
 

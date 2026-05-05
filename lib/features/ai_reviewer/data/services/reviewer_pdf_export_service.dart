@@ -32,18 +32,22 @@ class ReviewerPdfData {
 
   factory ReviewerPdfData.fromFirestore(Map<String, dynamic> data) {
     final fullContent = data['fullContent'] as String? ?? '';
-    final parsed = _tryParseJson(_stripJsonFence(fullContent));
+    final parsed = _tryParseJson(fullContent);
 
     final title = data['title'] as String? ?? parsed['title'] as String? ?? 'Study Reviewer';
-    final overview = data['overview'] as String? ?? data['summary'] as String? ?? parsed['overview'] as String? ?? parsed['summary'] as String? ?? '';
     final createdAt = data['createdAt'];
     final generatedAt = createdAt != null && createdAt.toString().contains('Timestamp') ? createdAt.toDate() as DateTime : DateTime.now();
 
-    final sections = _parseSections(data['sections'] ?? parsed['sections']);
-    final keyTerms = _parseKeyTerms(data['keyTerms'] ?? parsed['keyTerms']);
+    var sections = _parseSections(data['sections'] ?? parsed['sections']);
+    if (sections.isEmpty) sections = _legacySections(parsed);
+    if (sections.isEmpty) sections = _fallbackSections(fullContent);
+
+    final keyTerms = _parseKeyTerms(data['keyTerms'] ?? parsed['keyTerms'] ?? parsed['importantTerms']);
     final mustRemember = _stringList(data['mustRemember'] ?? parsed['mustRemember']);
     final practiceQuestions = _parseQuestions(data['practiceQuestions'] ?? parsed['practiceQuestions']);
     final flashcards = _parseFlashcards(data['flashcards'] ?? parsed['flashcards']);
+
+    final overview = _resolveOverview(data, parsed, sections);
 
     return ReviewerPdfData(
       title: title,
@@ -57,18 +61,129 @@ class ReviewerPdfData {
     );
   }
 
+  static String _resolveOverview(
+    Map<String, dynamic> data,
+    Map<String, dynamic> parsed,
+    List<ReviewerPdfSection> sections,
+  ) {
+    final value = data['overview'] as String? ??
+        data['summary'] as String? ??
+        parsed['overview'] as String? ??
+        parsed['summary'] as String? ??
+        '';
+
+    if (value.trim().isNotEmpty && value.trim() != 'Your reviewer is ready.') {
+      return value.trim();
+    }
+
+    if (sections.isNotEmpty && sections.first.bullets.isNotEmpty) {
+      return sections.first.bullets.first;
+    }
+
+    return 'Reviewer content is available below.';
+  }
+
+  static List<ReviewerPdfSection> _legacySections(Map<String, dynamic> parsed) {
+    final sections = <ReviewerPdfSection>[];
+
+    final keyConcepts = _stringList(parsed['keyConcepts']);
+    if (keyConcepts.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Key Concepts', bullets: keyConcepts));
+    }
+
+    final importantTerms = _legacyTermList(parsed['importantTerms']);
+    if (importantTerms.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Important Terms', bullets: importantTerms));
+    }
+
+    final stepByStep = _stringList(parsed['stepByStep']);
+    if (stepByStep.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Step-by-Step Explanation', bullets: stepByStep));
+    }
+
+    final examples = _stringList(parsed['examples']);
+    if (examples.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Examples', bullets: examples));
+    }
+
+    final commonMistakes = _stringList(parsed['commonMistakes']);
+    if (commonMistakes.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Common Mistakes and Reminders', bullets: commonMistakes));
+    }
+
+    final legacyKeyPoints = _stringList(parsed['keyPoints']);
+    if (legacyKeyPoints.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Key Points', bullets: legacyKeyPoints));
+    }
+
+    final legacyConsiderations = _stringList(parsed['nursingConsiderations']);
+    if (legacyConsiderations.isNotEmpty) {
+      sections.add(ReviewerPdfSection(heading: 'Nursing Considerations', bullets: legacyConsiderations));
+    }
+
+    return sections;
+  }
+
+  static List<String> _legacyTermList(dynamic value) {
+    if (value is! List) return [];
+    return value.whereType<Map>().map((item) {
+      final term = item['term']?.toString() ?? '';
+      final definition = item['definition']?.toString() ?? '';
+      return '$term: $definition'.trim();
+    }).where((s) => s.isNotEmpty && s != ':').toList();
+  }
+
+  static List<ReviewerPdfSection> _fallbackSections(String fullContent) {
+    final text = _plainTextFallback(fullContent);
+    if (text.isEmpty) return [];
+
+    final lines = text
+        .split(RegExp(r'\n+'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('{') && !line.startsWith('}'))
+        .take(20)
+        .toList();
+
+    if (lines.isEmpty) return [];
+
+    return [ReviewerPdfSection(heading: 'Reviewer Notes', bullets: lines)];
+  }
+
+  static String _plainTextFallback(String value) {
+    final cleaned = _stripJsonFence(value).trim();
+    if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+      try {
+        jsonDecode(cleaned);
+        return '';
+      } catch (_) {
+        return cleaned;
+      }
+    }
+    return cleaned;
+  }
+
   static String _stripJsonFence(String value) {
-    return value
-        .trim()
+    var cleaned = value.trim();
+
+    cleaned = cleaned
         .replaceFirst(RegExp(r'^```json\s*', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^```\s*'), '')
-        .replaceFirst(RegExp(r'\s*```\$'), '')
+        .replaceFirst(RegExp(r'\s*```$'), '')
         .trim();
+
+    final firstBrace = cleaned.indexOf('{');
+    final lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1).trim();
+    }
+
+    return cleaned;
   }
 
   static Map<String, dynamic> _tryParseJson(String value) {
     try {
-      final decoded = jsonDecode(value);
+      final decoded = jsonDecode(_stripJsonFence(value));
       return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
     } catch (_) {
       return <String, dynamic>{};
@@ -115,6 +230,13 @@ class ReviewerPdfData {
     if (value is List) return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
     return [];
   }
+
+  bool get hasContent =>
+      sections.isNotEmpty ||
+      keyTerms.isNotEmpty ||
+      mustRemember.isNotEmpty ||
+      practiceQuestions.isNotEmpty ||
+      flashcards.isNotEmpty;
 }
 
 
@@ -168,6 +290,10 @@ class ReviewerPdfExportService {
   }
 
   Uint8List _buildPdf(ReviewerPdfData reviewer) {
+    if (!reviewer.hasContent) {
+      throw StateError('No reviewer content available to export.');
+    }
+
     final document = PdfDocument();
     document.pageSettings.margins.all = 36;
     final page = document.pages.add();

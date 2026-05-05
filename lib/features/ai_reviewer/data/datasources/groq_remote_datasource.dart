@@ -75,6 +75,13 @@ class GroqRemoteDatasource {
 Source material:
 $cleanExtractedText
 
+Important requirements:
+- "sections" must contain at least 3 sections when enough source text exists (at least 300 characters).
+- Each section must contain at least 3 bullet points.
+- "overview" must not be generic. Do not write only "Your reviewer is ready." or similar placeholder text.
+- If the source is not educational content, explain what was found in one reviewer section instead of returning empty arrays.
+- Return JSON only. No markdown fences. No explanation text outside the JSON.
+
 Return this exact JSON schema:
 {
   "title": "Clear reviewer title",
@@ -96,12 +103,22 @@ Return this exact JSON schema:
   }
 
   String _stripJsonFence(String value) {
-    return value
-        .trim()
+    var cleaned = value.trim();
+
+    cleaned = cleaned
         .replaceFirst(RegExp(r'^```json\s*', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^```\s*'), '')
-        .replaceFirst(RegExp(r'\s*```\$'), '')
+        .replaceFirst(RegExp(r'\s*```$'), '')
         .trim();
+
+    final firstBrace = cleaned.indexOf('{');
+    final lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1).trim();
+    }
+
+    return cleaned;
   }
 }
 

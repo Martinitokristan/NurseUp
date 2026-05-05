@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
@@ -34,6 +35,37 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
     return reviewerAsync.when(
       data: (data) {
         final reviewer = ReviewerPdfData.fromFirestore(data ?? _demoDetailData);
+
+        if (!reviewer.hasContent) {
+          return Scaffold(
+            appBar: AppBar(title: Text(reviewer.title)),
+            body: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                    ),
+                    child: const Text(
+                      'The reviewer was created, but no study sections were found. Please try regenerating with a clearer file or photo.',
+                      style: AppTextStyles.body,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  OutlinedButton(
+                    onPressed: () => context.go(AppRoutes.upload),
+                    child: const Text('Upload another file'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         if (widget.showExportOnOpen && !_shownInitialExportSheet) {
           _shownInitialExportSheet = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -47,14 +79,45 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
             children: [
               Container(padding: const EdgeInsets.all(AppSpacing.lg), decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)), child: Text(reviewer.overview, style: AppTextStyles.body)),
               const SizedBox(height: AppSpacing.xl),
-              ...reviewer.sections.map((section) => Card(child: ExpansionTile(title: Text(section.heading, style: AppTextStyles.h3), childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [Text(section.bullets.map((bullet) => '- $bullet').join('\n'), style: AppTextStyles.body)]))),
-              const SizedBox(height: AppSpacing.lg),
+              ...reviewer.sections.map(
+                (section) => Card(
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(section.heading, style: AppTextStyles.h3),
+                        const SizedBox(height: AppSpacing.sm),
+                        ...section.bullets.map(
+                          (bullet) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text('• $bullet', style: AppTextStyles.body),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               if (reviewer.keyTerms.isNotEmpty)
                 Card(
-                  child: ExpansionTile(
-                    title: Text('Key Terms', style: AppTextStyles.h3),
-                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    children: [Text(reviewer.keyTerms.map((t) => '- ${t.term}: ${t.definition}').join('\n'), style: AppTextStyles.body)],
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Key Terms', style: AppTextStyles.h3),
+                        const SizedBox(height: AppSpacing.sm),
+                        ...reviewer.keyTerms.map(
+                          (t) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text('• ${t.term}: ${t.definition}', style: AppTextStyles.body),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               if (reviewer.mustRemember.isNotEmpty)
