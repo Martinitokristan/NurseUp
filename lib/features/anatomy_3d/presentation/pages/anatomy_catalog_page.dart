@@ -112,11 +112,9 @@ class _EmptyState extends StatelessWidget {
         children: [
           Icon(Icons.folder_open, size: 64, color: AppColors.primary.withValues(alpha: isDark ? 0.85 : 0.3)),
           const SizedBox(height: 16),
-          Text('No Anatomy Models Available', style: AppTextStyles.h3.copyWith(color: titleColor), textAlign: TextAlign.center),
+          Text('No 3D anatomy models yet', style: AppTextStyles.h3.copyWith(color: titleColor), textAlign: TextAlign.center),
           const SizedBox(height: 8),
-          Text('Upload study files with anatomy topics to unlock 3D models.', style: AppTextStyles.bodySmall.copyWith(color: bodyColor), textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          Text('For example: "Brain Anatomy Notes", "Cardiovascular System", "Respiratory Physiology"', style: AppTextStyles.caption.copyWith(color: AppColors.primary), textAlign: TextAlign.center),
+          Text('Upload a file about the brain, heart, lungs, kidney, liver, stomach, skeleton, eye, or ear. After NurseUp detects the topic, the matching Pro 3D model will appear here.', style: AppTextStyles.bodySmall.copyWith(color: bodyColor), textAlign: TextAlign.center),
         ],
       ),
     );

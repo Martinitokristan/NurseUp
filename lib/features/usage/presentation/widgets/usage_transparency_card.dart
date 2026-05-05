@@ -16,16 +16,16 @@ class UsageTransparencyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPro = usage.tier == 'pro';
 
-    final dailyWordMax = usage.getDailyWordLimit();
+    final dailyWordMax = isPro ? usage.getDailyWordLimit() : 500;
     final dailyWordPct = dailyWordMax > 0 ? (usage.wordsUsedToday / dailyWordMax).clamp(0.0, 1.0) : 0.0;
-    final isDailyWordLimitReached = usage.isDailyLimitReached();
+    final isDailyWordLimitReached = usage.wordsUsedToday >= dailyWordMax;
 
-    final weeklyWordMax = usage.getWeeklyLimit();
+    final weeklyWordMax = isPro ? usage.getWeeklyLimit() : 1000;
     final weeklyWordPct = weeklyWordMax > 0 ? (usage.wordsUsedThisWeek / weeklyWordMax).clamp(0.0, 1.0) : 0.0;
-    final isWeeklyLimitReached = usage.isLimitReached();
+    final isWeeklyLimitReached = usage.wordsUsedThisWeek >= weeklyWordMax;
 
-    final dailyFileMax = usage.getDailyFileLimit();
-    final isDailyFileLimitReached = usage.isDailyFileLimitReached();
+    final dailyFileMax = isPro ? usage.getDailyFileLimit() : 3;
+    final isDailyFileLimitReached = usage.dailyFileUploads >= dailyFileMax;
 
     final dailyResetStr = usage.dailyResetDate != null ? formatPhReset(usage.dailyResetDate!) : 'in 24 hrs';
     final weeklyResetStr = formatPhReset(usage.weekResetDate);
@@ -77,12 +77,7 @@ class UsageTransparencyCard extends StatelessWidget {
                 Text('Total uploaded: ${usage.filesUploaded}', style: AppTextStyles.bodySmall),
               ],
             ),
-            if (isDailyFileLimitReached) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text('Daily file limit reached. Resets $dailyResetStr.',
-                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.error)),
-            ],
-            if (isDailyWordLimitReached || isWeeklyLimitReached) ...[
+            if (isDailyWordLimitReached || isWeeklyLimitReached || isDailyFileLimitReached) ...[
               const SizedBox(height: AppSpacing.md),
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
@@ -96,16 +91,30 @@ class UsageTransparencyCard extends StatelessWidget {
                     Row(children: [
                       const Icon(Icons.block_rounded, color: AppColors.error, size: 18),
                       const SizedBox(width: AppSpacing.sm),
-                      Text('Uploads blocked',
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.error)),
+                      Text(
+                        'Uploads blocked',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ]),
                     const SizedBox(height: AppSpacing.xs),
-                    if (isDailyWordLimitReached)
-                      Text('Daily word limit reached. Resets $dailyResetStr.',
-                          style: AppTextStyles.bodySmall),
                     if (isWeeklyLimitReached)
-                      Text('Weekly word limit reached. Resets $weeklyResetStr.',
-                          style: AppTextStyles.bodySmall),
+                      Text(
+                        'Weekly limit reached. Daily uploads are paused until $weeklyResetStr.',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.error),
+                      )
+                    else if (isDailyWordLimitReached)
+                      Text(
+                        'Daily word limit reached. You can upload again at $dailyResetStr.',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.error),
+                      )
+                    else if (isDailyFileLimitReached)
+                      Text(
+                        'Daily file limit reached. You can upload again at $dailyResetStr.',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.error),
+                      ),
                     if (!isPro) ...[
                       const SizedBox(height: AppSpacing.sm),
                       SizedBox(

@@ -69,26 +69,26 @@ AnatomyModelEntity? detectAnatomyModel(String text) => anatomyModelById(detectAn
 /// All confirmed anatomy models — use for catalog display (Pro only).
 final allAnatomyModelsProvider = Provider<List<AnatomyModelEntity>>((ref) => _allAnatomyModels);
 
-/// Models matching the user's uploaded file topics (Pro only).
-/// Falls back to all models when no files have detected topics.
+/// Models unlocked by the user's uploaded files (Pro only).
+/// A model only appears after a reviewer detects the matching anatomy topic
+/// and saves `anatomyModelId` or `anatomyTopic` on the study file doc.
+/// Pro subscription alone does NOT unlock all models.
 final anatomyModelsProvider = Provider<List<AnatomyModelEntity>>((ref) {
   final isPro = ref.watch(subscriptionProvider);
   if (!isPro) return const [];
 
   final files = ref.watch(userFilesProvider).valueOrNull ?? const [];
-  if (files.isEmpty) return _allAnatomyModels;
+  if (files.isEmpty) return const [];
 
   final modelIds = <String>{};
   for (final file in files) {
-    if (file.anatomyModelId != null && anatomyModelById(file.anatomyModelId) != null) {
-      modelIds.add(file.anatomyModelId!);
-      continue;
+    final detectedId = file.anatomyModelId ?? file.anatomyTopic;
+    if (detectedId != null && anatomyModelById(detectedId) != null) {
+      modelIds.add(detectedId);
     }
-    final fallbackId = detectAnatomyTopic(file.name);
-    if (fallbackId != null) modelIds.add(fallbackId);
   }
 
-  if (modelIds.isEmpty) return _allAnatomyModels;
+  if (modelIds.isEmpty) return const [];
   return _allAnatomyModels.where((m) => modelIds.contains(m.id)).toList();
 });
 
@@ -119,14 +119,12 @@ IconData anatomyIcon(AnatomyModelEntity model) {
 final anatomyHotspotsProvider = Provider<Map<String, List<AnatomyHotspot>>>((ref) {
   return const {
     'brain': [
-      AnatomyHotspot(id: 'frontal_lobe', name: 'Frontal Lobe', position: '0.02 0.08 0.09', normal: '0 0.3 1', description: 'Controls reasoning, motor skills, and higher level thinking.', nursingSignificance: 'Assess for personality changes, motor weakness, and decision-making abilities after head injury.', pnleTip: 'Frontal lobe injuries often cause personality changes and impaired judgment.'),
-      AnatomyHotspot(id: 'parietal_lobe', name: 'Parietal Lobe', position: '0 0.12 0.02', normal: '0 1 0.1', description: 'Processes sensory information and spatial awareness.', nursingSignificance: 'Monitor for sensory deficits and spatial disorientation in stroke patients.', pnleTip: 'Parietal lobe affects sensation and spatial awareness.'),
-      AnatomyHotspot(id: 'temporal_lobe', name: 'Temporal Lobe', position: '-0.09 0.02 0.03', normal: '-1 0 0', description: 'Processes auditory information and memory.', nursingSignificance: 'Assess hearing and memory function in neurological patients.', pnleTip: 'Temporal lobe affects memory and hearing.'),
-      AnatomyHotspot(id: 'occipital_lobe', name: 'Occipital Lobe', position: '0 0.06 -0.09', normal: '0 0.2 -1', description: 'Processes visual information.', nursingSignificance: 'Check visual fields and acuity in neurological assessments.', pnleTip: 'Occipital lobe controls vision.'),
-      AnatomyHotspot(id: 'cerebellum', name: 'Cerebellum', position: '0 -0.06 -0.07', normal: '0 -0.3 -1', description: 'Coordinates movement and balance.', nursingSignificance: 'Assess coordination, balance, and fine motor skills.', pnleTip: 'Cerebellar dysfunction causes ataxia and coordination problems.'),
-      AnatomyHotspot(id: 'brain_stem', name: 'Brain Stem', position: '0 -0.09 0.01', normal: '0 -1 0.2', description: 'Controls vital functions like breathing and heart rate.', nursingSignificance: 'Critical for life support - assess respiratory and cardiovascular status.', pnleTip: 'Brain stem injury is life-threatening - monitor ABCs closely.'),
-      AnatomyHotspot(id: 'corpus_callosum', name: 'Corpus Callosum', position: '0.01 0.03 0.01', normal: '0 1 0', description: 'Connects the two hemispheres of the brain.', nursingSignificance: 'Facilitates communication between brain hemispheres.', pnleTip: 'Corpus callosum affects interhemispheric communication.'),
-      AnatomyHotspot(id: 'hippocampus', name: 'Hippocampus', position: '-0.06 -0.01 0.02', normal: '-1 -0.2 0', description: 'Critical for memory formation.', nursingSignificance: 'Assess memory formation and recall in cognitive evaluations.', pnleTip: 'Hippocampus damage causes memory impairment.'),
+      AnatomyHotspot(id: 'frontal_lobe', name: 'Frontal Lobe', position: '-0.14m 0.10m 0.16m', normal: '-0.2m 0.25m 1m', description: 'Controls reasoning, voluntary movement, behavior, and decision-making.', nursingSignificance: 'Assess personality changes, judgment, speech, and motor function.', pnleTip: 'Frontal lobe injury often causes personality and judgment changes.'),
+      AnatomyHotspot(id: 'parietal_lobe', name: 'Parietal Lobe', position: '0.08m 0.16m 0.08m', normal: '0.1m 0.85m 0.3m', description: 'Processes sensory input and spatial awareness.', nursingSignificance: 'Assess sensation, neglect, and spatial orientation.', pnleTip: 'Parietal lesions affect sensation and body/spatial awareness.'),
+      AnatomyHotspot(id: 'temporal_lobe', name: 'Temporal Lobe', position: '-0.20m -0.02m 0.10m', normal: '-1m 0m 0.35m', description: 'Supports hearing, language comprehension, and memory.', nursingSignificance: 'Assess hearing, memory, and language comprehension.', pnleTip: 'Temporal lobe is associated with hearing and memory.'),
+      AnatomyHotspot(id: 'occipital_lobe', name: 'Occipital Lobe', position: '0.17m 0.03m -0.12m', normal: '0.45m 0.1m -1m', description: 'Processes visual information.', nursingSignificance: 'Assess visual fields and visual processing.', pnleTip: 'Occipital lobe controls vision.'),
+      AnatomyHotspot(id: 'cerebellum', name: 'Cerebellum', position: '0.05m -0.16m -0.12m', normal: '0m -0.45m -1m', description: 'Coordinates balance, posture, and fine motor movement.', nursingSignificance: 'Assess gait, balance, coordination, and ataxia.', pnleTip: 'Cerebellar dysfunction causes ataxia and poor coordination.'),
+      AnatomyHotspot(id: 'brain_stem', name: 'Brain Stem', position: '0.00m -0.22m 0.00m', normal: '0m -1m 0.1m', description: 'Regulates vital functions such as breathing and heart rate.', nursingSignificance: 'Prioritize airway, breathing, and circulation assessment.', pnleTip: 'Brain stem injury is life-threatening; monitor ABCs.'),
     ],
     'heart': [
       AnatomyHotspot(id: 'aortic_valve', name: 'Aortic Valve', position: '0.02 0.09 0.02', normal: '0 1 0.2', description: 'Controls blood flow from left ventricle to aorta.', nursingSignificance: 'Listen for systolic murmur indicating stenosis or regurgitation.', pnleTip: 'Aortic stenosis causes systolic murmur radiating to carotids.'),

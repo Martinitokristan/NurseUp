@@ -356,7 +356,7 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     final limit = usageController.checkUploadLimit(
       usage: usage,
       newWords: totalWords,
-      weeklyWordLimit: plan.weeklyWordLimit,
+      weeklyWordLimit: plan.isPro ? plan.weeklyWordLimit : 1000,
       dailyWordLimit: plan.isPro ? 10000 : 500,
       dailyFileLimit: plan.isPro ? 999999 : 3,
       newFiles: prepared.length,

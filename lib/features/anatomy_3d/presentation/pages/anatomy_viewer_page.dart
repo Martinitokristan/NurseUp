@@ -89,6 +89,42 @@ class _AnatomyViewerPageState extends ConsumerState<AnatomyViewerPage> {
       );
     }
 
+    final availableModels = ref.watch(anatomyModelsProvider);
+    final hasAccessToModel = availableModels.any((item) => item.id == modelId);
+    if (!hasAccessToModel) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('3D Anatomy')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_rounded, color: AppColors.primary, size: 56),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'This model is not unlocked yet.',
+                  style: AppTextStyles.h3,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const Text(
+                  'Upload and generate a reviewer for this anatomy topic to unlock the matching 3D model.',
+                  style: AppTextStyles.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                OutlinedButton(
+                  onPressed: () => context.go(AppRoutes.upload),
+                  child: const Text('Upload Notes'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final hotspots = ref.watch(anatomyHotspotsProvider)[modelId] ?? [];
     return Scaffold(
       body: Container(
@@ -176,6 +212,7 @@ class _ModelSurface extends StatelessWidget {
           disableZoom: false,
           innerModelViewerHtml: hotspots.isNotEmpty ? _buildHotspotHtml(hotspots) : null,
           relatedCss: hotspots.isNotEmpty ? _kHotspotCss : null,
+          relatedJs: hotspots.isNotEmpty ? _kHotspotJs : null,
           minHotspotOpacity: 0,
           maxHotspotOpacity: showLabels ? 1.0 : 0.0,
           javascriptChannels: hotspots.isNotEmpty
@@ -207,19 +244,38 @@ class _ModelSurface extends StatelessWidget {
 
 String _buildHotspotHtml(List<AnatomyHotspot> hotspots) {
   final buf = StringBuffer();
-  for (final h in hotspots) {
+  for (var i = 0; i < hotspots.length; i++) {
+    final h = hotspots[i];
     final safeId = _htmlEscape(h.id);
     final safeName = _htmlEscape(h.name);
+    final sideClass = i.isEven ? 'label-right' : 'label-left';
+    final position = _toModelViewerVector(h.position);
+    final normal = _toModelViewerVector(h.normal);
     buf.write(
-      '<button class="anatomy-hotspot" slot="hotspot-$safeId" '
-      'data-position="${h.position}" data-normal="${h.normal}" '
-      'onclick="AnatomyHotspotChannel.postMessage(\'${h.id}\');">'
-      '<div class="target-dot"></div>'
-      '<div class="annotation">$safeName</div>'
+      '<button class="anatomy-hotspot $sideClass" '
+      'slot="hotspot-$safeId" '
+      'data-position="$position" '
+      'data-normal="$normal" '
+      'onclick="AnatomyHotspotChannel.postMessage(\'$safeId\');">'
+      '<span class="target-dot"></span>'
+      '<span class="leader-line"></span>'
+      '<span class="annotation">$safeName</span>'
       '</button>',
     );
   }
   return buf.toString();
+}
+
+String _toModelViewerVector(String value) {
+  final parts = value.trim().split(RegExp(r'\s+'));
+  if (parts.length != 3) return value;
+  return parts.map((part) {
+    final cleaned = part.trim();
+    if (cleaned.endsWith('m') || cleaned.endsWith('cm') || cleaned.endsWith('mm')) {
+      return cleaned;
+    }
+    return '${cleaned}m';
+  }).join(' ');
 }
 
 AnatomyHotspot? _findHotspotById(List<AnatomyHotspot> hotspots, String id) {
@@ -237,36 +293,93 @@ String _htmlEscape(String text) => text
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
+const String _kHotspotJs = '''
+(() => {
+  const mv = document.querySelector('model-viewer');
+  if (!mv) return;
+  function syncVisibility() {
+    mv.querySelectorAll('.anatomy-hotspot').forEach((hs) => {
+      if (hs.getAttribute('data-visible') === 'false') {
+        hs.style.opacity = '0';
+        hs.style.pointerEvents = 'none';
+      } else {
+        hs.style.opacity = '';
+        hs.style.pointerEvents = 'auto';
+      }
+    });
+  }
+  mv.addEventListener('load', syncVisibility);
+  mv.addEventListener('camera-change', syncVisibility);
+  setInterval(syncVisibility, 150);
+})();
+''';
+
 const String _kHotspotCss = '''
 .anatomy-hotspot {
-  background: none;
-  border: none;
+  display: block;
+  position: relative;
+  width: 0;
+  height: 0;
+  border: 0;
   padding: 0;
+  background: transparent;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  transition: opacity .12s ease;
 }
 .target-dot {
-  width: 12px;
-  height: 12px;
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2.5px solid #1E88E5;
-  background: white;
-  box-shadow: 0 0 6px rgba(30,136,229,0.55);
+  background: #1E88E5;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+  z-index: 3;
+}
+.leader-line {
+  position: absolute;
+  left: 8px;
+  top: -1px;
+  width: 72px;
+  height: 2px;
+  background: rgba(15, 27, 45, .85);
+  transform-origin: left center;
+  z-index: 2;
 }
 .annotation {
-  background: rgba(255,255,255,0.93);
-  border: 1px solid rgba(30,136,229,0.3);
-  border-radius: 14px;
-  padding: 3px 10px;
-  font-family: sans-serif;
-  font-size: 11px;
-  font-weight: 700;
+  position: absolute;
+  left: 82px;
+  top: -17px;
+  min-width: 86px;
+  max-width: 170px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(30,136,229,.35);
   color: #0F1B2D;
+  font-family: Poppins, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
   white-space: nowrap;
-  margin-top: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  z-index: 1;
+}
+.anatomy-hotspot.label-left .leader-line {
+  left: -80px;
+}
+.anatomy-hotspot.label-left .annotation {
+  left: auto;
+  right: 82px;
+}
+.anatomy-hotspot[data-visible="false"] {
+  opacity: 0;
   pointer-events: none;
 }
 ''';

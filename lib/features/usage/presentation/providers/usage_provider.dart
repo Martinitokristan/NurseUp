@@ -79,19 +79,28 @@ class UsageController extends StateNotifier<UsageState> {
     int? dailyFileLimit,
     int newFiles = 1,
   }) {
-    final dailyFileMax = dailyFileLimit ?? usage.getDailyFileLimit();
-    if (usage.dailyFileUploads + newFiles > dailyFileMax) {
-      final resetAt = usage.dailyResetDate ?? PhilippineTime.nextDailyReset();
+    final nowUtc = DateTime.now().toUtc();
+    final dailyReset = usage.dailyResetDate;
+    final weeklyReset = usage.weekResetDate;
+    final dailyExpired = dailyReset != null && !nowUtc.isBefore(dailyReset);
+    final weeklyExpired = !nowUtc.isBefore(weeklyReset);
+    final effectiveTodayWords = dailyExpired ? 0 : usage.wordsUsedToday;
+    final effectiveWeekWords = weeklyExpired ? 0 : usage.wordsUsedThisWeek;
+    final effectiveTodayFiles = dailyExpired ? 0 : usage.dailyFileUploads;
+
+    final weeklyWordMax = weeklyWordLimit ?? usage.getWeeklyLimit();
+    if (effectiveWeekWords + newWords > weeklyWordMax) {
+      final resetAt = usage.weekResetDate;
       return UsageLimitResult(
         allowed: false,
-        limitType: 'daily_files',
+        limitType: 'weekly_words',
         resetAt: resetAt,
-        reason: 'Daily file limit reached ($dailyFileMax/day). Resets at ${formatPhReset(resetAt)}.',
+        reason: 'Weekly word limit reached ($weeklyWordMax words/week). Resets at ${formatPhReset(resetAt)}.',
       );
     }
 
     final dailyWordMax = dailyWordLimit ?? usage.getDailyWordLimit();
-    if (usage.wordsUsedToday + newWords > dailyWordMax) {
+    if (effectiveTodayWords + newWords > dailyWordMax) {
       final resetAt = usage.dailyResetDate ?? PhilippineTime.nextDailyReset();
       return UsageLimitResult(
         allowed: false,
@@ -101,14 +110,14 @@ class UsageController extends StateNotifier<UsageState> {
       );
     }
 
-    final weeklyWordMax = weeklyWordLimit ?? usage.getWeeklyLimit();
-    if (usage.wordsUsedThisWeek + newWords > weeklyWordMax) {
-      final resetAt = usage.weekResetDate;
+    final dailyFileMax = dailyFileLimit ?? usage.getDailyFileLimit();
+    if (effectiveTodayFiles + newFiles > dailyFileMax) {
+      final resetAt = usage.dailyResetDate ?? PhilippineTime.nextDailyReset();
       return UsageLimitResult(
         allowed: false,
-        limitType: 'weekly_words',
+        limitType: 'daily_files',
         resetAt: resetAt,
-        reason: 'Weekly word limit reached ($weeklyWordMax words/week). Resets at ${formatPhReset(resetAt)}.',
+        reason: 'Daily file limit reached ($dailyFileMax files/day). Resets at ${formatPhReset(resetAt)}.',
       );
     }
 
@@ -128,7 +137,7 @@ class UsageController extends StateNotifier<UsageState> {
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final snap = await tx.get(docRef);
         final nowPh = PhilippineTime.now();
-        final nowUtc = nowPh.toUtc();
+        final nowUtc = PhilippineTime.toUtc(nowPh);
 
         if (!snap.exists) {
           tx.set(docRef, {
@@ -218,7 +227,7 @@ class UsageController extends StateNotifier<UsageState> {
 
   Map<String, dynamic> _calculateStreakUpdate(UsageModel current, DateTime nowPh) {
     final todayPh = DateTime(nowPh.year, nowPh.month, nowPh.day);
-    final todayUtc = todayPh.toUtc();
+    final todayUtc = PhilippineTime.toUtc(todayPh);
 
     if (current.lastActiveDate == null) {
       return {'streak': 1, 'last_active_date': Timestamp.fromDate(todayUtc)};

@@ -82,7 +82,7 @@ class UsageModel extends Equatable {
   /// Deprecated static defaults. Prefer passing the plan's weeklyWordLimit
   /// from `activePlanProvider` so limits stay in sync with Firestore `plans/`.
   int getWeeklyLimit({int? weeklyLimitOverride}) =>
-      weeklyLimitOverride ?? (tier == 'pro' ? 50000 : 500);
+      weeklyLimitOverride ?? (tier == 'pro' ? 50000 : 1000);
 
   int getRemainingWords({int? weeklyLimitOverride}) =>
       getWeeklyLimit(weeklyLimitOverride: weeklyLimitOverride) -

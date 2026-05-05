@@ -82,7 +82,7 @@ class PlanModel extends Equatable {
     name: 'Free Plan',
     priceCents: 0,
     currency: 'PHP',
-    weeklyWordLimit: 500,
+    weeklyWordLimit: 1000,
     monthlyUploadLimit: 3,
     monthlyReviewerLimit: 3,
     features: ['basic_reviewer'],
