@@ -171,15 +171,9 @@ class UsageController extends StateNotifier<UsageState> {
     return const UsageLimitResult(allowed: true);
   }
 
+  @Deprecated('Use reserveUploadUsage with activePlanProvider limits before uploading.')
   Future<void> recordUsage(int wordsAdded) async {
-    await reserveUploadUsage(
-      wordsAdded: wordsAdded,
-      fileCount: 1,
-      isPro: FirebaseAuth.instance.currentUser == null ? false : false,
-      weeklyWordLimit: 1000,
-      dailyWordLimit: 500,
-      dailyFileLimit: 3,
-    );
+    throw UnsupportedError('recordUsage is deprecated. Use reserveUploadUsage before upload.');
   }
 
   Future<UsageReservationResult> reserveUploadUsage({
@@ -220,7 +214,7 @@ class UsageController extends StateNotifier<UsageState> {
         if (snap.exists) {
           final data = snap.data()!;
           final current = UsageModel.fromFirestore(data);
-          tier = data['tier'] as String? ?? tier;
+          tier = isPro ? 'pro' : 'free';
           dailyWindowStart = current.dailyWindowStartedAt;
           weeklyWindowStart = current.weeklyWindowStartedAt;
           dailyReset = current.dailyResetDate;

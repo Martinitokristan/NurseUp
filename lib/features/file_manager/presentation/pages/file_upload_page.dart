@@ -16,6 +16,7 @@ import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/utils/philippine_time.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../subscription/presentation/providers/subscription_provider.dart';
+import '../../../usage/domain/usage_limits.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
 import '../providers/file_manager_provider.dart';
 
@@ -55,10 +56,10 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     final uploadState = ref.watch(fileUploadControllerProvider);
     final usage = ref.watch(usageProvider).valueOrNull;
     final plan = ref.watch(activePlanProvider);
-    final isFree = !plan.isPro;
-    final dailyLimit = isFree ? 500 : 1000;
-    final weeklyLimit = isFree ? 1000 : 5000;
-    final dailyFileLimit = isFree ? 3 : 999999;
+    final limits = usageLimitsForPlan(plan.isPro);
+    final dailyLimit = limits.dailyWords;
+    final weeklyLimit = limits.weeklyWords;
+    final dailyFileLimit = limits.dailyFiles;
     final dailyBlocked = usage != null && usage.wordsUsedToday >= dailyLimit;
     final weeklyBlocked = usage != null && usage.wordsUsedThisWeek >= weeklyLimit;
     final fileBlocked = usage != null && usage.dailyFileUploads >= dailyFileLimit;
@@ -83,7 +84,11 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
           children: [
             InkWell(
               borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
-              onTap: uploadState.isUploading ? null : _showUploadSourceSheet,
+              onTap: uploadState.isUploading
+                  ? null
+                  : uploadBlocked
+                      ? () => _showSnackBar(blockedMessage ?? 'Usage limit reached. Please try again later.')
+                      : _showUploadSourceSheet,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
                 decoration: BoxDecoration(
@@ -123,7 +128,11 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
             AppButton(
               label: uploadState.isUploading ? 'Submitting...' : 'Submit for Review',
               icon: Icons.auto_awesome_rounded,
-              onPressed: uploadState.isUploading || _files.isEmpty || uploadBlocked ? null : _submitForReview,
+              onPressed: uploadState.isUploading || _files.isEmpty
+                  ? null
+                  : uploadBlocked
+                      ? () => _showSnackBar(blockedMessage ?? 'Usage limit reached. Please try again later.')
+                      : _submitForReview,
             ),
           ],
         ),
@@ -368,9 +377,16 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     }
 
     final totalWords = prepared.fold<int>(0, (sum, item) => sum + item.wordCount);
-    final weeklyLimit = plan.isPro ? plan.weeklyWordLimit : 1000;
-    final dailyLimit = plan.isPro ? 10000 : 500;
-    final dailyFileLimit = plan.isPro ? 999999 : 3;
+    if (totalWords <= 0) {
+      const message = 'No readable words found. Please choose a clearer file or photo.';
+      uploadController.setError(message);
+      _showSnackBar(message);
+      return;
+    }
+    final limits = usageLimitsForPlan(plan.isPro);
+    final weeklyLimit = limits.weeklyWords;
+    final dailyLimit = limits.dailyWords;
+    final dailyFileLimit = limits.dailyFiles;
     final reservation = await usageController.reserveUploadUsage(
       wordsAdded: totalWords,
       fileCount: prepared.length,
@@ -379,6 +395,7 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
       dailyWordLimit: dailyLimit,
       dailyFileLimit: dailyFileLimit,
     );
+    debugPrint('[NurseUp] usage reservation allowed=${reservation.allowed} reason=${reservation.reason}');
 
     if (!mounted) return;
     if (!reservation.allowed) {

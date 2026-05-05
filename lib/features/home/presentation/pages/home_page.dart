@@ -8,6 +8,7 @@ import '../../../ai_reviewer/presentation/providers/reviewer_provider.dart';
 import '../../../ai_reviewer/presentation/utils/reviewer_navigation.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../file_manager/presentation/providers/file_manager_provider.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
 import '../../../usage/presentation/widgets/usage_transparency_card.dart';
 import '../../../usage/presentation/widgets/upgrade_modal.dart';
@@ -20,6 +21,8 @@ class HomePage extends ConsumerWidget {
     final user = ref.watch(authStateProvider).valueOrNull;
     final files = ref.watch(userFilesProvider).valueOrNull ?? const [];
     final usageAsync = ref.watch(usageProvider);
+    final activePlan = ref.watch(activePlanProvider);
+    final isPro = activePlan.isPro;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
@@ -63,7 +66,7 @@ class HomePage extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _buildHeroCard(context, files),
                 const SizedBox(height: 16),
-                usageAsync.when(data: (usage) => UsageTransparencyCard(usage: usage, onUpgrade: () => _showUpgradeDialog(context)), loading: () => const SizedBox.shrink(), error: (error, stack) => const SizedBox.shrink()),
+                usageAsync.when(data: (usage) => UsageTransparencyCard(usage: usage, isPro: isPro, onUpgrade: () => _showUpgradeDialog(context)), loading: () => const SizedBox.shrink(), error: (error, stack) => const SizedBox.shrink()),
                 const SizedBox(height: 16),
                 Text('Recent Activity', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: sectionLabelColor, fontFamily: 'Poppins')),
                 const SizedBox(height: 16),

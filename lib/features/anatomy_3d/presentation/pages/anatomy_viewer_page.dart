@@ -202,6 +202,7 @@ class _ModelSurface extends StatelessWidget {
             ),
           );
         }
+        final camera = _cameraConfigFor(assetPath);
         return ModelViewer(
           key: ValueKey('${assetPath}_${showLabels ? 'labels' : 'nolabels'}'),
           src: src,
@@ -212,12 +213,13 @@ class _ModelSurface extends StatelessWidget {
           disableZoom: false,
           innerModelViewerHtml: hotspots.isNotEmpty ? _buildHotspotHtml(hotspots, showLabels: showLabels) : null,
           relatedCss: hotspots.isNotEmpty ? _kHotspotCss : null,
+          relatedJs: hotspots.isNotEmpty ? _kHotspotJs : null,
           minHotspotOpacity: 0,
           maxHotspotOpacity: showLabels ? 1.0 : 0.0,
-          cameraOrbit: '0deg 75deg auto',
-          fieldOfView: '30deg',
-          minCameraOrbit: 'auto auto 0.3m',
-          maxCameraOrbit: 'auto auto 5m',
+          cameraOrbit: camera.cameraOrbit,
+          fieldOfView: camera.fieldOfView,
+          minCameraOrbit: camera.minCameraOrbit,
+          maxCameraOrbit: camera.maxCameraOrbit,
           javascriptChannels: hotspots.isNotEmpty && showLabels
               ? {
                   JavascriptChannel(
@@ -260,7 +262,7 @@ String _buildHotspotHtml(List<AnatomyHotspot> hotspots, {required bool showLabel
       'slot="hotspot-$safeId" '
       'data-position="$position" '
       'data-normal="$normal" '
-      'onclick="AnatomyHotspotChannel.postMessage(\'$safeId\');">'
+      'onclick="window.NurseUpFocusHotspot && window.NurseUpFocusHotspot(\'$safeId\'); AnatomyHotspotChannel.postMessage(\'$safeId\');">'
       '<span class="target-dot"></span>'
       '<span class="leader-line"></span>'
       '<span class="annotation">$safeName</span>'
@@ -272,36 +274,64 @@ String _buildHotspotHtml(List<AnatomyHotspot> hotspots, {required bool showLabel
 
 String _hotspotDirectionClass(String id) {
   switch (id) {
-    // Brain
     case 'frontal_lobe':
-      return 'to-right-up';
     case 'parietal_lobe':
-      return 'to-right-up';
-    case 'temporal_lobe':
-      return 'to-left';
-    case 'occipital_lobe':
-      return 'to-left-up';
-    case 'cerebellum':
-      return 'to-right-down';
-    case 'brain_stem':
-      return 'to-right-down';
-
-    // Heart
-    case 'right_atrium':
-    case 'right_ventricle':
-    case 'tricuspid_valve':
-      return 'to-left';
-    case 'left_atrium':
-    case 'left_ventricle':
-    case 'mitral_valve':
-      return 'to-right';
     case 'aortic_valve':
     case 'pulmonary_valve':
-      return 'to-right-up';
-
+    case 'aorta':
+      return 'top-right';
+    case 'temporal_lobe':
+    case 'occipital_lobe':
+    case 'right_atrium':
+    case 'right_ventricle':
+      return 'top-left';
+    case 'cerebellum':
+    case 'brain_stem':
+    case 'left_atrium':
+    case 'left_ventricle':
+      return 'top-right';
     default:
-      return 'to-right';
+      return 'top-right';
   }
+}
+
+class _ModelCameraConfig {
+  const _ModelCameraConfig({
+    required this.cameraOrbit,
+    required this.fieldOfView,
+    required this.minCameraOrbit,
+    required this.maxCameraOrbit,
+  });
+
+  final String cameraOrbit;
+  final String fieldOfView;
+  final String minCameraOrbit;
+  final String maxCameraOrbit;
+}
+
+_ModelCameraConfig _cameraConfigFor(String assetPath) {
+  if (assetPath.contains('brain')) {
+    return const _ModelCameraConfig(
+      cameraOrbit: '0deg 72deg 2.8m',
+      fieldOfView: '42deg',
+      minCameraOrbit: 'auto auto 0.7m',
+      maxCameraOrbit: 'auto auto 8m',
+    );
+  }
+  if (assetPath.contains('heart')) {
+    return const _ModelCameraConfig(
+      cameraOrbit: '0deg 75deg 2.2m',
+      fieldOfView: '38deg',
+      minCameraOrbit: 'auto auto 0.6m',
+      maxCameraOrbit: 'auto auto 7m',
+    );
+  }
+  return const _ModelCameraConfig(
+    cameraOrbit: '0deg 75deg 2.6m',
+    fieldOfView: '40deg',
+    minCameraOrbit: 'auto auto 0.6m',
+    maxCameraOrbit: 'auto auto 8m',
+  );
 }
 
 AnatomyHotspot? _findHotspotById(List<AnatomyHotspot> hotspots, String id) {
@@ -330,6 +360,24 @@ String _htmlEscape(String text) => text
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+
+const String _kHotspotJs = '''
+(() => {
+  const mv = document.querySelector('model-viewer');
+  if (!mv || window.__nurseupHotspotFocusInstalled) return;
+  window.__nurseupHotspotFocusInstalled = true;
+  window.NurseUpFocusHotspot = (id) => {
+    const hotspot = mv.querySelector(`[slot="hotspot-\${id}"]`);
+    if (!hotspot) return;
+    const position = hotspot.getAttribute('data-position');
+    if (!position) return;
+    try {
+      mv.cameraTarget = position;
+      mv.fieldOfView = '32deg';
+    } catch (_) {}
+  };
+})();
+''';
 
 const String _kHotspotCss = '''
 .anatomy-hotspot {
@@ -366,23 +414,32 @@ const String _kHotspotCss = '''
 
 .leader-line {
   position: absolute;
-  width: 76px;
-  height: 2px;
+  width: 2px;
+  height: 64px;
   background: rgba(15,27,45,.85);
-  transform-origin: left center;
+  transform-origin: bottom center;
   z-index: 2;
+}
+
+.leader-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 2px;
+  width: 52px;
+  background: rgba(15,27,45,.85);
 }
 
 .annotation {
   position: absolute;
-  width: 150px;
-  padding: 8px 12px;
+  width: 128px;
+  padding: 8px 10px;
   border-radius: 999px;
   background: rgba(255,255,255,.97);
   border: 1px solid rgba(30,136,229,.35);
   color: #0F1B2D;
   font-family: Poppins, Arial, sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.1;
   text-align: center;
@@ -393,61 +450,29 @@ const String _kHotspotCss = '''
   z-index: 1;
 }
 
-.to-right .leader-line {
-  left: 8px;
-  top: -1px;
+.top-right .leader-line {
+  left: 0;
+  bottom: 8px;
+  transform: rotate(34deg);
 }
-.to-right .annotation {
-  left: 88px;
-  top: -19px;
+.top-right .leader-line::before {
+  left: 0;
 }
-
-.to-left .leader-line {
-  left: -84px;
-  top: -1px;
-}
-.to-left .annotation {
-  right: 88px;
-  top: -19px;
+.top-right .annotation {
+  left: 46px;
+  bottom: 58px;
 }
 
-.to-right-up .leader-line {
-  left: 8px;
-  top: -1px;
-  transform: rotate(-24deg);
+.top-left .leader-line {
+  left: 0;
+  bottom: 8px;
+  transform: rotate(-34deg);
 }
-.to-right-up .annotation {
-  left: 78px;
-  top: -58px;
+.top-left .leader-line::before {
+  right: 0;
 }
-
-.to-left-up .leader-line {
-  left: -82px;
-  top: -1px;
-  transform: rotate(24deg);
-}
-.to-left-up .annotation {
-  right: 78px;
-  top: -58px;
-}
-
-.to-right-down .leader-line {
-  left: 8px;
-  top: -1px;
-  transform: rotate(24deg);
-}
-.to-right-down .annotation {
-  left: 78px;
-  top: 24px;
-}
-
-.to-left-down .leader-line {
-  left: -82px;
-  top: -1px;
-  transform: rotate(-24deg);
-}
-.to-left-down .annotation {
-  right: 78px;
-  top: 24px;
+.top-left .annotation {
+  right: 46px;
+  bottom: 58px;
 }
 ''';

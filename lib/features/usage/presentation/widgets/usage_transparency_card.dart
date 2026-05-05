@@ -4,27 +4,33 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../data/models/usage_model.dart';
+import '../../domain/usage_limits.dart';
 import '../providers/usage_provider.dart';
 
 class UsageTransparencyCard extends StatelessWidget {
-  const UsageTransparencyCard({super.key, required this.usage, this.onUpgrade});
+  const UsageTransparencyCard({
+    super.key,
+    required this.usage,
+    required this.isPro,
+    this.onUpgrade,
+  });
 
   final UsageModel usage;
+  final bool isPro;
   final VoidCallback? onUpgrade;
 
   @override
   Widget build(BuildContext context) {
-    final isPro = usage.tier == 'pro';
-
-    final dailyWordMax = isPro ? 1000 : 500;
+    final limits = usageLimitsForPlan(isPro);
+    final dailyWordMax = limits.dailyWords;
     final dailyWordPct = dailyWordMax > 0 ? (usage.wordsUsedToday / dailyWordMax).clamp(0.0, 1.0) : 0.0;
     final isDailyWordLimitReached = usage.wordsUsedToday >= dailyWordMax;
 
-    final weeklyWordMax = isPro ? 5000 : 1000;
+    final weeklyWordMax = limits.weeklyWords;
     final weeklyWordPct = weeklyWordMax > 0 ? (usage.wordsUsedThisWeek / weeklyWordMax).clamp(0.0, 1.0) : 0.0;
     final isWeeklyLimitReached = usage.wordsUsedThisWeek >= weeklyWordMax;
 
-    final dailyFileMax = isPro ? 999999 : 3;
+    final dailyFileMax = limits.dailyFiles;
     final isDailyFileLimitReached = usage.dailyFileUploads >= dailyFileMax;
 
     final dailyResetStr = usage.dailyResetDate != null
