@@ -106,7 +106,7 @@ class _AnatomyViewerPageState extends ConsumerState<AnatomyViewerPage> {
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 12))]),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [_control(Icons.rotate_right_rounded, autoRotate ? 'Rotating' : 'Rotate', () => setState(() => autoRotate = !autoRotate)), _control(Icons.label_rounded, labels ? 'Labels On' : 'Labels', () => setState(() => labels = !labels)), _control(Icons.grid_view_rounded, 'Catalog', () => context.go(AppRoutes.anatomy))]),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [_control(Icons.rotate_right_rounded, autoRotate ? 'Rotating' : 'Rotate', () => setState(() => autoRotate = !autoRotate)), _control(Icons.label_rounded, labels ? 'Hide Labels' : 'Show Labels', () => setState(() => labels = !labels)), _control(Icons.grid_view_rounded, 'Catalog', () => context.go(AppRoutes.anatomy))]),
                 ),
               ),
             ],
@@ -162,28 +162,38 @@ class _ModelSurface extends StatelessWidget {
               width: 280,
               height: 280,
               decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFD6EEFF)]), boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.18), blurRadius: 40, offset: const Offset(0, 20))]),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(fallbackIcon, color: AppColors.primary, size: 112), const SizedBox(height: 12), Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('3D model unavailable.\nConfigure kAnatomyModelBaseUrl or bundle GLB.', style: AppTextStyles.caption, textAlign: TextAlign.center))]),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(fallbackIcon, color: AppColors.primary, size: 112), const SizedBox(height: 12), Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('3D model unavailable.\nBundle the GLB file to view it.', style: AppTextStyles.caption, textAlign: TextAlign.center))]),
             ),
           );
         }
-        return Stack(children: [
-          ModelViewer(
-            src: src,
-            ar: true,
-            autoRotate: autoRotate,
-            cameraControls: true,
-            backgroundColor: Colors.transparent,
-            disableZoom: false,
-          ),
-          if (showLabels)
-            ...hotspots.map((hotspot) => _HotspotOverlay(hotspot: hotspot, onTap: () => onHotspotTap(hotspot))),
-        ]);
+        return ModelViewer(
+          key: ValueKey('${assetPath}_$showLabels'),
+          src: src,
+          ar: true,
+          autoRotate: autoRotate,
+          cameraControls: true,
+          backgroundColor: Colors.transparent,
+          disableZoom: false,
+          innerModelViewerHtml: hotspots.isNotEmpty ? _buildHotspotHtml(hotspots) : null,
+          relatedCss: hotspots.isNotEmpty ? _kHotspotCss : null,
+          minHotspotOpacity: 0,
+          maxHotspotOpacity: showLabels ? 1.0 : 0.0,
+          javascriptChannels: hotspots.isNotEmpty
+              ? {
+                  JavascriptChannel(
+                    'AnatomyHotspotChannel',
+                    onMessageReceived: (msg) {
+                      final hotspot = _findHotspotById(hotspots, msg.message);
+                      if (hotspot != null) onHotspotTap(hotspot);
+                    },
+                  ),
+                }
+              : null,
+        );
       },
     );
   }
 
-  /// Resolves the actual `src` to feed into [ModelViewer].
-  /// Tries the bundled asset first; returns null to show placeholder on failure.
   static Future<String?> _resolveSource(String assetPath) async {
     try {
       await rootBundle.load(assetPath);
@@ -195,41 +205,68 @@ class _ModelSurface extends StatelessWidget {
   }
 }
 
-class _HotspotOverlay extends StatelessWidget {
-  const _HotspotOverlay({required this.hotspot, required this.onTap});
-
-  final AnatomyHotspot hotspot;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: onTap,
-        child: CustomPaint(
-          painter: _HotspotPainter(hotspot: hotspot),
-          child: Container(),
-        ),
-      ),
+String _buildHotspotHtml(List<AnatomyHotspot> hotspots) {
+  final buf = StringBuffer();
+  for (final h in hotspots) {
+    final safeId = _htmlEscape(h.id);
+    final safeName = _htmlEscape(h.name);
+    buf.write(
+      '<button class="anatomy-hotspot" slot="hotspot-$safeId" '
+      'data-position="${h.position}" data-normal="${h.normal}" '
+      'onclick="AnatomyHotspotChannel.postMessage(\'${h.id}\');">'
+      '<div class="target-dot"></div>'
+      '<div class="annotation">$safeName</div>'
+      '</button>',
     );
   }
+  return buf.toString();
 }
 
-class _HotspotPainter extends CustomPainter {
-  const _HotspotPainter({required this.hotspot});
-
-  final AnatomyHotspot hotspot;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final paint = Paint()..color = AppColors.primary.withValues(alpha: 0.8);
-    final dotPaint = Paint()..color = Colors.white;
-    
-    canvas.drawCircle(center, 12, paint);
-    canvas.drawCircle(center, 6, dotPaint);
+AnatomyHotspot? _findHotspotById(List<AnatomyHotspot> hotspots, String id) {
+  try {
+    return hotspots.firstWhere((h) => h.id == id);
+  } catch (_) {
+    return null;
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+String _htmlEscape(String text) => text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const String _kHotspotCss = '''
+.anatomy-hotspot {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.target-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2.5px solid #1E88E5;
+  background: white;
+  box-shadow: 0 0 6px rgba(30,136,229,0.55);
+}
+.annotation {
+  background: rgba(255,255,255,0.93);
+  border: 1px solid rgba(30,136,229,0.3);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-family: sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0F1B2D;
+  white-space: nowrap;
+  margin-top: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+  pointer-events: none;
+}
+''';

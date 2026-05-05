@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../../../core/utils/philippine_time.dart';
 import '../models/user_model.dart';
 
 class AuthRemoteDatasource {
@@ -72,8 +73,16 @@ class AuthRemoteDatasource {
     if (!usageSnap.exists) {
       await usageDoc.set({
         'words_used_this_week': 0,
-        'week_reset_date': Timestamp.fromDate(_nextMonday()),
+        'week_reset_date': Timestamp.fromDate(
+          PhilippineTime.toUtc(PhilippineTime.nextWeeklyReset()),
+        ),
         'tier': 'free',
+        'words_used_today': 0,
+        'daily_reset_date': Timestamp.fromDate(
+          PhilippineTime.toUtc(PhilippineTime.nextDailyReset()),
+        ),
+        'daily_file_uploads': 0,
+        'weekly_file_uploads': 0,
         'files_uploaded': 0,
         'reviewers_generated': 0,
         'streak': 0,
@@ -82,13 +91,6 @@ class AuthRemoteDatasource {
         'updated_at': FieldValue.serverTimestamp(),
       });
     }
-  }
-
-  DateTime _nextMonday() {
-    final now = DateTime.now();
-    var daysUntilMonday = DateTime.monday - now.weekday;
-    if (daysUntilMonday <= 0) daysUntilMonday += 7;
-    return DateTime(now.year, now.month, now.day).add(Duration(days: daysUntilMonday));
   }
 
   void _ensureFirebaseReady() {

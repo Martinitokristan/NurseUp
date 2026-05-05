@@ -25,7 +25,21 @@ class ReviewerListPage extends ConsumerWidget {
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 itemCount: reviewers.length,
                 separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
-                itemBuilder: (context, index) => Card(child: ListTile(onTap: () => context.push('?id='), leading: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary), title: Text(reviewers[index].title), subtitle: Text(reviewers[index].summary), trailing: OutlinedButton(onPressed: () => context.push('?id=&export=true'), child: const Text('Export')))),
+                itemBuilder: (context, index) {
+                  final reviewer = reviewers[index];
+                  return Card(
+                    child: ListTile(
+                      onTap: () => context.push('${AppRoutes.reviewerDetail}?id=${reviewer.id}'),
+                      leading: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary),
+                      title: Text(reviewer.title),
+                      subtitle: Text(reviewer.summary, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: OutlinedButton(
+                        onPressed: () => context.push('${AppRoutes.reviewerDetail}?id=${reviewer.id}&export=true'),
+                        child: const Text('Export'),
+                      ),
+                    ),
+                  );
+                },
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const Center(child: Text('Unable to load reviewers.')),

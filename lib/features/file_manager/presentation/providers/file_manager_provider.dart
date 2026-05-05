@@ -93,6 +93,13 @@ class UploadedStudyFileResult {
   final int wordCount;
 }
 
+class PreparedUploadFile {
+  const PreparedUploadFile({required this.picked, required this.extractedText, required this.wordCount});
+  final PickedUploadFile picked;
+  final String extractedText;
+  final int wordCount;
+}
+
 class FileUploadController extends StateNotifier<FileUploadState> {
   FileUploadController() : super(const FileUploadState());
 
@@ -172,6 +179,95 @@ class FileUploadController extends StateNotifier<FileUploadState> {
     } catch (error) {
       state = FileUploadState(errorMessage: _friendlyFileError(error));
       return false;
+    }
+  }
+
+  void setError(String message) {
+    state = FileUploadState(errorMessage: message);
+  }
+
+  /// Extracts text + counts words for each file WITHOUT uploading.
+  Future<List<PreparedUploadFile>> prepareSelectedFiles(List<PickedUploadFile> files) async {
+    try {
+      _ensureReady();
+      if (files.isEmpty) return const [];
+      final prepared = <PreparedUploadFile>[];
+      for (final file in files) {
+        state = FileUploadState(isUploading: true, message: 'Reading ${file.name}...');
+        final extraction = await _extractor.extract(
+          bytes: file.bytes,
+          fileName: file.name,
+          mimeType: file.mimeType,
+          path: file.path,
+        );
+        final wordCount = extraction.text
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((w) => w.isNotEmpty)
+            .length;
+        prepared.add(PreparedUploadFile(
+          picked: file,
+          extractedText: extraction.text,
+          wordCount: wordCount,
+        ));
+      }
+      state = const FileUploadState();
+      return prepared;
+    } catch (error) {
+      state = FileUploadState(errorMessage: _friendlyFileError(error));
+      return const [];
+    }
+  }
+
+  /// Uploads already-prepared files (skips re-extraction).
+  Future<List<UploadedStudyFileResult>> uploadPreparedFiles(List<PreparedUploadFile> prepared) async {
+    try {
+      _ensureReady();
+      if (prepared.isEmpty) return const [];
+      state = const FileUploadState(isUploading: true, message: 'Uploading...');
+      final user = FirebaseAuth.instance.currentUser!;
+      final uploaded = <UploadedStudyFileResult>[];
+
+      for (final item in prepared) {
+        state = FileUploadState(isUploading: true, message: 'Uploading ${item.picked.name}...');
+        final fileDoc = FirebaseFirestore.instance
+            .collection('study_files')
+            .doc(user.uid)
+            .collection('docs')
+            .doc();
+        final upload = await CloudinaryService.instance.uploadPdf(
+          bytes: item.picked.bytes,
+          fileName: item.picked.name,
+        );
+
+        state = FileUploadState(isUploading: true, message: 'Saving ${item.picked.name}...');
+        await fileDoc.set({
+          'userId': user.uid,
+          'name': item.picked.name,
+          'sizeBytes': item.picked.bytes.length,
+          'type': item.picked.extension,
+          'mimeType': item.picked.mimeType,
+          'extractedText': item.extractedText,
+          'wordCount': item.wordCount,
+          'extractionMethod': 'extracted',
+          'cloudinaryPublicId': upload.publicId,
+          'cloudinaryResourceType': upload.resourceType,
+          'downloadUrl': upload.secureUrl,
+          'uploadedAt': FieldValue.serverTimestamp(),
+        });
+        uploaded.add(UploadedStudyFileResult(fileId: fileDoc.id, wordCount: item.wordCount));
+      }
+
+      final uploadedIds = uploaded.map((r) => r.fileId).toList();
+      state = FileUploadState(
+        message: 'Files uploaded.',
+        fileId: uploaded.isEmpty ? null : uploaded.first.fileId,
+        fileIds: uploadedIds,
+      );
+      return uploaded;
+    } catch (error) {
+      state = FileUploadState(errorMessage: _friendlyFileError(error));
+      return const [];
     }
   }
 

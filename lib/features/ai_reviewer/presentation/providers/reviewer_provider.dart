@@ -78,6 +78,38 @@ final reviewerDocumentProvider = StreamProvider.family<Map<String, dynamic>?, St
         return data;
       });
 });
+final reviewerByFileIdProvider = StreamProvider<Map<String, String>>((ref) {
+  final authAsync = ref.watch(authStateProvider);
+  final user = authAsync.valueOrNull;
+
+  if (Firebase.apps.isEmpty || user == null) {
+    return Stream.value(const <String, String>{});
+  }
+
+  return FirebaseFirestore.instance
+      .collection('reviewers')
+      .doc(user.uid)
+      .collection('docs')
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((snapshot) {
+        final map = <String, String>{};
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final fileId = data['fileId'] as String?;
+          if (fileId != null && fileId.isNotEmpty && !map.containsKey(fileId)) {
+            map[fileId] = doc.id;
+          }
+        }
+        return map;
+      });
+});
+
+final reviewerIdForFileProvider = Provider.family<String?, String>((ref, fileId) {
+  final map = ref.watch(reviewerByFileIdProvider).valueOrNull ?? const <String, String>{};
+  return map[fileId];
+});
+
 final generateReviewerControllerProvider = StateNotifierProvider<GenerateReviewerController, GenerateReviewerState>((ref) {
   return GenerateReviewerController();
 });
@@ -103,10 +135,29 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
     return user;
   }
 
+  Future<String?> _existingReviewerIdForFile(String userId, String fileId) async {
+    final existing = await FirebaseFirestore.instance
+        .collection('reviewers')
+        .doc(userId)
+        .collection('docs')
+        .where('fileId', isEqualTo: fileId)
+        .limit(1)
+        .get();
+    if (existing.docs.isEmpty) return null;
+    return existing.docs.first.id;
+  }
+
   Future<bool> generateFromFile(String fileId) async {
     try {
       final user = _requireUser();
       state = const GenerateReviewerState(isGenerating: true, message: 'Reading your file...');
+
+      final existingId = await _existingReviewerIdForFile(user.uid, fileId);
+      if (existingId != null) {
+        state = GenerateReviewerState(message: 'Reviewer ready.', reviewerId: existingId);
+        return true;
+      }
+
       final fileDoc = await FirebaseFirestore.instance.collection('study_files').doc(user.uid).collection('docs').doc(fileId).get();
       final fileData = fileDoc.data();
       if (fileData == null) throw const GroqReviewerException('missing_file');

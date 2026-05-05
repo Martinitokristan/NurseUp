@@ -106,7 +106,16 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
           body: ListView(
             padding: const EdgeInsets.all(AppSpacing.lg),
             children: [
-              Container(padding: const EdgeInsets.all(AppSpacing.lg), decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)), child: Text(reviewer.overview, style: AppTextStyles.body)),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.10)),
+                ),
+                child: Text(reviewer.overview, style: AppTextStyles.body, softWrap: true),
+              ),
               if (anatomyModel != null) ...[const SizedBox(height: AppSpacing.md), _anatomyModelCard(context, model: anatomyModel, isPro: isPro)],
               const SizedBox(height: AppSpacing.xl),
               ...reviewer.sections.map(
@@ -115,14 +124,21 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(section.heading, style: AppTextStyles.h3),
+                        Text(section.heading, style: AppTextStyles.h3, maxLines: 3, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: AppSpacing.sm),
                         ...section.bullets.map(
                           (bullet) => Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Text('• $bullet', style: AppTextStyles.body),
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('•  ', style: AppTextStyles.body),
+                                Expanded(child: Text(bullet, style: AppTextStyles.body, softWrap: true)),
+                              ],
+                            ),
                           ),
                         ),
                       ],

@@ -14,6 +14,7 @@ import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
 import '../providers/file_manager_provider.dart';
 
@@ -331,17 +332,49 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
   Future<void> _submitForReview() async {
     final router = GoRouter.of(context);
     final usageController = ref.read(usageControllerProvider.notifier);
-    final uploadFiles = _files
-        .map((file) => PickedUploadFile(name: file.name, bytes: file.bytes, extension: file.extension, mimeType: file.mimeType, path: file.path))
+    final uploadController = ref.read(fileUploadControllerProvider.notifier);
+    final plan = ref.read(activePlanProvider);
+
+    final pickList = _files
+        .map((f) => PickedUploadFile(name: f.name, bytes: f.bytes, extension: f.extension, mimeType: f.mimeType, path: f.path))
         .toList();
-    final uploaded = await ref.read(fileUploadControllerProvider.notifier).uploadSelectedFiles(uploadFiles);
+
+    final prepared = await uploadController.prepareSelectedFiles(pickList);
     if (!mounted) return;
-    if (uploaded.isEmpty) {
-      final error = ref.read(fileUploadControllerProvider).errorMessage;
-      _showSnackBar(error ?? 'Upload failed. Please try again.');
+    if (prepared.isEmpty) {
+      _showSnackBar(ref.read(fileUploadControllerProvider).errorMessage ?? 'Could not read the selected file(s).');
       return;
     }
-    final totalWords = uploaded.fold<int>(0, (sum, item) => sum + item.wordCount);
+
+    final totalWords = prepared.fold<int>(0, (sum, item) => sum + item.wordCount);
+    final usage = ref.read(usageProvider).valueOrNull;
+    if (usage == null) {
+      _showSnackBar('Usage status is loading. Please try again.');
+      return;
+    }
+
+    final limit = usageController.checkUploadLimit(
+      usage: usage,
+      newWords: totalWords,
+      weeklyWordLimit: plan.weeklyWordLimit,
+      dailyWordLimit: plan.isPro ? 10000 : 500,
+      dailyFileLimit: plan.isPro ? 999999 : 3,
+      newFiles: prepared.length,
+    );
+
+    if (!limit.allowed) {
+      uploadController.setError(limit.reason ?? 'Usage limit reached.');
+      _showSnackBar(limit.reason ?? 'Usage limit reached.');
+      return;
+    }
+
+    final uploaded = await uploadController.uploadPreparedFiles(prepared);
+    if (!mounted) return;
+    if (uploaded.isEmpty) {
+      _showSnackBar(ref.read(fileUploadControllerProvider).errorMessage ?? 'Upload failed. Please try again.');
+      return;
+    }
+
     await usageController.recordUsage(totalWords);
     if (mounted) router.push('${AppRoutes.reviewerGenerating}?fileId=${uploaded.first.fileId}');
   }

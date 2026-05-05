@@ -8,6 +8,8 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/app_gradient_card.dart';
+import '../../../ai_reviewer/presentation/providers/reviewer_provider.dart';
+import '../../../ai_reviewer/presentation/utils/reviewer_navigation.dart';
 import '../../domain/entities/study_file_entity.dart';
 import '../providers/file_manager_provider.dart';
 
@@ -53,7 +55,7 @@ class FileManagerPage extends ConsumerWidget {
               const Text('Recent Files', style: AppTextStyles.h2),
               const SizedBox(height: AppSpacing.md),
               filesAsync.when(
-                data: (files) => Column(children: files.map((file) => _file(context, file)).toList()),
+                data: (files) => Column(children: files.map((file) => _file(context, ref, file)).toList()),
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (_, _) => const Text('Unable to load files.'),
               ),
@@ -65,17 +67,38 @@ class FileManagerPage extends ConsumerWidget {
     );
   }
 
-  Widget _file(BuildContext context, StudyFileEntity file) {
+  Widget _file(BuildContext context, WidgetRef ref, StudyFileEntity file) {
     final meta = '${(file.sizeBytes / 1000000).toStringAsFixed(1)} MB · ${file.type.toUpperCase()}';
+    final reviewerId = ref.watch(reviewerIdForFileProvider(file.id));
+    final hasReviewer = reviewerId != null && reviewerId.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: AppGradientCard(
         padding: const EdgeInsets.all(14),
+        onTap: () => openOrGenerateReviewer(context: context, ref: ref, fileId: file.id),
         child: Row(children: [
-          Container(width: 48, height: 48, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.description_rounded, color: AppColors.primary)),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            child: Icon(hasReviewer ? Icons.menu_book_rounded : Icons.description_rounded, color: AppColors.primary),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(file.name, style: AppTextStyles.h3), const SizedBox(height: 4), Text(meta, style: AppTextStyles.caption)])),
-          IconButton(onPressed: () => context.push('${AppRoutes.reviewerGenerating}?fileId=${file.id}'), icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(file.name, style: AppTextStyles.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 4),
+                Text(hasReviewer ? 'Reviewer ready · Tap to open' : meta, style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => openOrGenerateReviewer(context: context, ref: ref, fileId: file.id),
+            icon: Icon(hasReviewer ? Icons.visibility_rounded : Icons.auto_awesome_rounded, size: 18),
+            label: Text(hasReviewer ? 'Open' : 'Review'),
+          ),
         ]),
       ),
     );

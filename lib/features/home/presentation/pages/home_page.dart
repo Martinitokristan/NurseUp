@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
+import '../../../ai_reviewer/presentation/providers/reviewer_provider.dart';
+import '../../../ai_reviewer/presentation/utils/reviewer_navigation.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../file_manager/presentation/providers/file_manager_provider.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
@@ -68,7 +70,16 @@ class HomePage extends ConsumerWidget {
                 if (files.isEmpty)
                   Text('Upload your first study file to begin.', style: TextStyle(fontSize: 14, color: sectionLabelColor.withValues(alpha: 0.8)))
                 else
-                  ...files.take(2).map((file) => _RecentActivityCard(name: file.name, type: file.type.toUpperCase(), meta: '${file.type.toUpperCase()} · ${(file.sizeBytes / 1000000).toStringAsFixed(1)} MB', onTap: () => context.push('${AppRoutes.reviewerGenerating}?fileId=${file.id}'))),
+                  ...files.take(2).map((file) {
+                    final reviewerId = ref.watch(reviewerIdForFileProvider(file.id));
+                    final hasReviewer = reviewerId != null && reviewerId.isNotEmpty;
+                    return _RecentActivityCard(
+                      name: file.name,
+                      type: hasReviewer ? 'Reviewer' : file.type.toUpperCase(),
+                      meta: hasReviewer ? 'Reviewer ready · Tap to open' : '${file.type.toUpperCase()} · ${(file.sizeBytes / 1000000).toStringAsFixed(1)} MB',
+                      onTap: () => openOrGenerateReviewer(context: context, ref: ref, fileId: file.id),
+                    );
+                  }),
               ],
             ),
           ],
@@ -378,7 +389,7 @@ class _RecentActivityCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Poppins')),
+                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Poppins')),
                     const SizedBox(height: 4),
                     Text(meta, style: const TextStyle(fontSize: 16, color: Color(0xFFAAAAAA), fontFamily: 'Poppins')),
                   ],
