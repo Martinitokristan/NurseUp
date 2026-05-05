@@ -45,15 +45,53 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
           body: ListView(
             padding: const EdgeInsets.all(AppSpacing.lg),
             children: [
-              Container(padding: const EdgeInsets.all(AppSpacing.lg), decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)), child: Text(reviewer.summary, style: AppTextStyles.body)),
+              Container(padding: const EdgeInsets.all(AppSpacing.lg), decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)), child: Text(reviewer.overview, style: AppTextStyles.body)),
               const SizedBox(height: AppSpacing.xl),
               ...reviewer.sections.map((section) => Card(child: ExpansionTile(title: Text(section.heading, style: AppTextStyles.h3), childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [Text(section.bullets.map((bullet) => '- $bullet').join('\n'), style: AppTextStyles.body)]))),
               const SizedBox(height: AppSpacing.lg),
+              if (reviewer.keyTerms.isNotEmpty)
+                Card(
+                  child: ExpansionTile(
+                    title: Text('Key Terms', style: AppTextStyles.h3),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: [Text(reviewer.keyTerms.map((t) => '- ${t.term}: ${t.definition}').join('\n'), style: AppTextStyles.body)],
+                  ),
+                ),
+              if (reviewer.mustRemember.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: AppSpacing.lg),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  decoration: BoxDecoration(color: AppColors.tipBackground, border: Border.all(color: AppColors.tipBorder), borderRadius: BorderRadius.circular(AppSpacing.radiusLg)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Must Remember', style: AppTextStyles.h3.copyWith(color: AppColors.primary)),
+                      const SizedBox(height: 8),
+                      Text(reviewer.mustRemember.map((item) => '• $item').join('\n'), style: AppTextStyles.bodyMedium),
+                    ],
+                  ),
+                ),
               if (reviewer.practiceQuestions.isNotEmpty)
                 Container(
+                  margin: const EdgeInsets.only(top: AppSpacing.lg),
                   padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(color: AppColors.tipBackground, border: Border.all(color: AppColors.tipBorder), borderRadius: BorderRadius.circular(AppSpacing.radiusLg)),
                   child: Text('Practice Questions:\n${reviewer.practiceQuestions.map((item) => '- ${item.question}\n  Answer: ${item.answer}').join('\n')}', style: AppTextStyles.bodyMedium),
+                ),
+              if (reviewer.flashcards.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: AppSpacing.lg),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  decoration: BoxDecoration(color: Colors.orange.shade50, border: Border.all(color: Colors.orange.shade200), borderRadius: BorderRadius.circular(AppSpacing.radiusLg)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Flashcards (${reviewer.flashcards.length})', style: AppTextStyles.h3.copyWith(color: Colors.orange.shade800)),
+                      const SizedBox(height: 8),
+                      Text(reviewer.flashcards.take(5).map((c) => 'Q: ${c.front}\nA: ${c.back}').join('\n\n'), style: AppTextStyles.bodyMedium),
+                      if (reviewer.flashcards.length > 5) Text('\n+ ${reviewer.flashcards.length - 5} more flashcards saved', style: AppTextStyles.caption),
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -125,7 +163,7 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
 
 const _demoDetailData = {
   'title': 'Brain Anatomy Reviewer',
-  'summary': 'This reviewer summarizes key concepts from the uploaded nursing lesson with exam-focused recall points.',
+  'overview': 'This reviewer summarizes key concepts from the uploaded nursing lesson with exam-focused recall points.',
   'fileName': 'brain.pdf',
-  'fullContent': '{"title":"Brain Anatomy Reviewer","summary":"This reviewer summarizes key concepts from the uploaded nursing lesson with PNLE-focused recall points.","keyPoints":["Key nursing concept with short, board-exam ready wording.","Prioritize assessment, safety, and patient education.","Connect anatomy to clinical signs."],"nursingConsiderations":["Assess level of consciousness and neurological changes.","Report sudden changes promptly."],"pnleTips":["Focus on priority nursing actions and early warning signs before memorizing rare details."]}',
+  'fullContent': '{"title":"Brain Anatomy Reviewer","overview":"This reviewer summarizes key concepts from the uploaded nursing lesson with exam-focused recall points.","sections":[{"heading":"Key Concepts","bullets":["Key nursing concept with short, board-exam ready wording.","Prioritize assessment, safety, and patient education."]}],"keyTerms":[{"term":"Neuron","definition":"Basic functional unit of the nervous system"}],"mustRemember":["Assess level of consciousness first"],"practiceQuestions":[{"question":"What is the primary function of the frontal lobe?","answer":"Executive functions and voluntary movement"}],"flashcards":[{"front":"What does CNS stand for?","back":"Central Nervous System"}]}',
 };

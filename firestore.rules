@@ -27,6 +27,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Flashcards per user
+    match /flashcards/{userId}/docs/{flashcardId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Subscription doc — the user may read and update their own paid activation.
     match /subscriptions/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;

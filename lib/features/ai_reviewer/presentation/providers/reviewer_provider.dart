@@ -8,6 +8,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/groq_remote_datasource.dart';
 import '../../domain/entities/reviewer_entity.dart';
 
+final flashcardsProvider = StreamProvider<List<FlashcardEntity>>((ref) {
+  if (Firebase.apps.isEmpty) return Stream.value(const []);
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return Stream.value(const []);
+  return FirebaseFirestore.instance.collection('flashcards').doc(user.uid).collection('docs').orderBy('createdAt', descending: true).snapshots().map((snapshot) {
+    return snapshot.docs.map((doc) => FlashcardEntity.fromDoc(doc)).toList();
+  });
+});
+
 final reviewersProvider = StreamProvider<List<ReviewerEntity>>((ref) {
   if (Firebase.apps.isEmpty) return Stream.value(_demoReviewers);
   final user = FirebaseAuth.instance.currentUser;
@@ -68,26 +77,99 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       state = const GenerateReviewerState(isGenerating: true, message: 'Creating your reviewer...');
       final result = await _groq.generateReviewer(extractedText, fileName);
       final parsed = _tryParseReviewerJson(result);
-      final title = parsed['title'] as String? ?? 'Generated Reviewer';
-      final summary = parsed['summary'] as String? ?? parsed['finalSummary'] as String? ?? 'Your reviewer is ready.';
-      
-      state = const GenerateReviewerState(isGenerating: true, message: 'Formatting your reviewer...');
+      final title = parsed['title'] as String? ?? 'Study Reviewer';
+      final overview = parsed['overview'] as String? ?? parsed['summary'] as String? ?? 'Your reviewer is ready.';
+      final sections = _parseSections(parsed['sections']);
+      final keyTerms = _parseKeyTerms(parsed['keyTerms']);
+      final mustRemember = _stringList(parsed['mustRemember']);
+      final practiceQuestions = _parsePracticeQuestions(parsed['practiceQuestions']);
+      final flashcards = _parseFlashcards(parsed['flashcards']);
+
+      state = const GenerateReviewerState(isGenerating: true, message: 'Saving flashcards...');
       final user = FirebaseAuth.instance.currentUser!;
       final doc = FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').doc();
+
       await doc.set({
         'title': title,
-        'summary': summary,
+        'overview': overview,
+        'summary': overview,
         'fullContent': result,
+        'sections': sections,
+        'keyTerms': keyTerms,
+        'mustRemember': mustRemember,
+        'practiceQuestions': practiceQuestions,
+        'flashcards': flashcards,
         'fileId': fileId,
         'createdAt': FieldValue.serverTimestamp(),
       });
-      
+
+      await _saveFlashcards(user.uid, doc.id, fileId, flashcards);
+
       state = GenerateReviewerState(message: 'Reviewer generated.', reviewerId: doc.id);
       return true;
     } catch (error) {
       state = GenerateReviewerState(errorMessage: _friendlyError(error));
       return false;
     }
+  }
+
+  Future<void> _saveFlashcards(String userId, String reviewerId, String fileId, List<Map<String, String>> flashcards) async {
+    if (flashcards.isEmpty) return;
+    final batch = FirebaseFirestore.instance.batch();
+    final flashcardsCollection = FirebaseFirestore.instance.collection('flashcards').doc(userId).collection('docs');
+    for (final card in flashcards) {
+      final cardDoc = flashcardsCollection.doc();
+      batch.set(cardDoc, {
+        'userId': userId,
+        'reviewerId': reviewerId,
+        'fileId': fileId,
+        'front': card['front'],
+        'back': card['back'],
+        'createdAt': FieldValue.serverTimestamp(),
+        'source': 'reviewer_generation',
+      });
+    }
+    await batch.commit();
+  }
+
+  List<Map<String, dynamic>> _parseSections(dynamic value) {
+    if (value is! List) return [];
+    return value.whereType<Map>().map((item) => {
+      'heading': item['heading']?.toString() ?? '',
+      'bullets': _stringList(item['bullets']),
+    }).where((s) => (s['heading'] as String).isNotEmpty).toList();
+  }
+
+  List<Map<String, String>> _parseKeyTerms(dynamic value) {
+    if (value is! List) return [];
+    return value.whereType<Map>().map((item) {
+      final term = item['term']?.toString().trim() ?? '';
+      final definition = item['definition']?.toString().trim() ?? '';
+      return {'term': term, 'definition': definition};
+    }).where((t) => t['term']!.isNotEmpty).toList();
+  }
+
+  List<Map<String, String>> _parsePracticeQuestions(dynamic value) {
+    if (value is! List) return [];
+    return value.whereType<Map>().map((item) {
+      final question = item['question']?.toString().trim() ?? '';
+      final answer = item['answer']?.toString().trim() ?? '';
+      return {'question': question, 'answer': answer};
+    }).where((q) => q['question']!.isNotEmpty).toList();
+  }
+
+  List<Map<String, String>> _parseFlashcards(dynamic value) {
+    if (value is! List) return [];
+    return value.whereType<Map>().map((item) {
+      final front = item['front']?.toString().trim() ?? '';
+      final back = item['back']?.toString().trim() ?? '';
+      return {'front': front, 'back': back};
+    }).where((c) => c['front']!.isNotEmpty && c['back']!.isNotEmpty).toList();
+  }
+
+  List<String> _stringList(dynamic value) {
+    if (value is List) return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
+    return [];
   }
 
   void _ensureReady() {
@@ -140,3 +222,33 @@ const _demoReviewers = [
   ReviewerEntity(id: 'cardio-reviewer', title: 'Cardiovascular Nursing Notes', summary: 'Cardiac assessment and nursing interventions.'),
 ];
 
+class FlashcardEntity {
+  const FlashcardEntity({
+    required this.id,
+    required this.front,
+    required this.back,
+    required this.reviewerId,
+    required this.fileId,
+    this.createdAt,
+  });
+
+  final String id;
+  final String front;
+  final String back;
+  final String reviewerId;
+  final String fileId;
+  final DateTime? createdAt;
+
+  factory FlashcardEntity.fromDoc(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>?;
+    final createdAt = data?['createdAt'];
+    return FlashcardEntity(
+      id: doc.id,
+      front: data?['front'] as String? ?? '',
+      back: data?['back'] as String? ?? '',
+      reviewerId: data?['reviewerId'] as String? ?? '',
+      fileId: data?['fileId'] as String? ?? '',
+      createdAt: createdAt != null && createdAt.toString().contains('Timestamp') ? createdAt.toDate() : null,
+    );
+  }
+}

@@ -35,7 +35,7 @@ class GroqRemoteDatasource {
                   {
                     'role': 'system',
                     'content':
-                        'You are an expert academic reviewer creator for students. Create a formal, accurate, easy-to-understand study reviewer from the provided learning material. Do not mention file IDs, filenames, upload paths, OCR issues, or technical metadata. If the source text is messy, infer the educational topic carefully but do not invent facts not supported by the text. Organize the reviewer with clear headings, bullet points, definitions, key concepts, examples, summary, and practice questions with answers. Always respond with valid JSON only.',
+                        'You are an expert academic reviewer writer for nursing and healthcare students. Create a clean, modern, student-friendly reviewer from the provided study material. Do not mention file IDs, filenames, upload paths, OCR issues, JSON, AI, logs, API data, or technical metadata. Do not invent facts unsupported by the source. Organize the output as practical reviewer content with short headings, concise bullet points, key terms, must-remember notes, practice questions, and flashcards. Always return valid JSON only using the exact schema requested.',
                   },
                   {
                     'role': 'user',
@@ -50,7 +50,8 @@ class GroqRemoteDatasource {
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
-          return data['choices'][0]['message']['content'] as String;
+          final content = data['choices'][0]['message']['content'] as String;
+          return _stripJsonFence(content);
         }
         if (response.statusCode == 401 || response.statusCode == 403) throw const GroqReviewerException('invalid_key');
         if (response.statusCode == 429) throw const GroqReviewerException('rate_limit');
@@ -69,32 +70,38 @@ class GroqRemoteDatasource {
   }
 
   String _buildPrompt(String cleanExtractedText) {
-    return '''Create a high-quality student reviewer from this extracted material. Format it professionally. Include:
-1. Title
-2. Short overview
-3. Key concepts and explanations
-4. Important terms and definitions
-5. Step-by-step explanations if the topic involves processes or calculations
-6. Examples when useful
-7. Common mistakes or reminders
-8. Summary
-9. 10 practice questions with answer key
+    return '''Create a clean, modern student reviewer from the source material below. Make it useful for studying with natural headings, bullet points, and concise explanations. If the source includes noise, ignore technical noise and focus only on educational content. Return valid JSON only.
 
 Source material:
 $cleanExtractedText
 
-Respond with valid JSON in this exact format:
+Return this exact JSON schema:
 {
-  "title": "Descriptive title for the reviewer",
-  "summary": "Short overview of the source material",
-  "keyConcepts": ["concept with clear explanation"],
-  "importantTerms": [{"term":"term", "definition":"definition"}],
-  "stepByStep": ["step explanation when applicable"],
-  "examples": ["example when useful"],
-  "commonMistakes": ["common mistake or reminder"],
-  "finalSummary": "Concise study summary",
-  "practiceQuestions": [{"question":"question", "answer":"answer"}]
+  "title": "Clear reviewer title",
+  "overview": "Short plain-language overview",
+  "sections": [
+    {"heading": "Main topic heading", "bullets": ["Clear bullet point explanation", "Another reviewer-style bullet point"]}
+  ],
+  "keyTerms": [
+    {"term": "Important term", "definition": "Simple definition"}
+  ],
+  "mustRemember": ["High-yield fact students should remember"],
+  "practiceQuestions": [
+    {"question": "Question text", "answer": "Answer text"}
+  ],
+  "flashcards": [
+    {"front": "Question or term", "back": "Answer or explanation"}
+  ]
 }''';
+  }
+
+  String _stripJsonFence(String value) {
+    return value
+        .trim()
+        .replaceFirst(RegExp(r'^```json\s*', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'^```\s*'), '')
+        .replaceFirst(RegExp(r'\s*```\$'), '')
+        .trim();
   }
 }
 
