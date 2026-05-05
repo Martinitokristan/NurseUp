@@ -54,7 +54,10 @@ class GroqRemoteDatasource {
           return _stripJsonFence(content);
         }
         if (response.statusCode == 401 || response.statusCode == 403) throw const GroqReviewerException('invalid_key');
-        if (response.statusCode == 429) throw const GroqReviewerException('rate_limit');
+        if (response.statusCode == 429) {
+          final retryAfter = response.headers['retry-after'];
+          throw GroqReviewerException('rate_limit:${retryAfter ?? ''}');
+        }
         if (response.statusCode >= 500 && attempt == 0) continue;
         throw const GroqReviewerException('service_unavailable');
       } on SocketException {

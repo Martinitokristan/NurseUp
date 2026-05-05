@@ -148,6 +148,7 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
   }
 
   Future<bool> generateFromFile(String fileId) async {
+    if (state.isGenerating) return false;
     try {
       final user = _requireUser();
       state = const GenerateReviewerState(isGenerating: true, message: 'Reading your file...');
@@ -359,8 +360,13 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
     if (msg.contains('invalid_key')) {
       return 'The AI service is not configured correctly. Please check the app setup.';
     }
-    if (msg.contains('rate') || msg.contains('limit') || msg.contains('429')) {
-      return 'Too many requests. Please wait a moment and try again.';
+    if (msg.contains('rate_limit') || msg.contains('429')) {
+      final retryAfter = _retryAfterSeconds(msg);
+      if (retryAfter != null) {
+        final minutes = (retryAfter / 60).ceil();
+        return 'The AI reviewer service is busy. Please try again in about $minutes minute${minutes == 1 ? '' : 's'}.';
+      }
+      return 'The AI reviewer service is busy from too many requests. Please wait a few minutes and try again.';
     }
     if (msg.contains('timeout') || msg.contains('deadline')) {
       return 'Request timed out. Please try again.';
@@ -375,6 +381,12 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
       return 'AI service temporarily unavailable. Please try again later.';
     }
     return 'Something went wrong while generating the reviewer. Please try again.';
+  }
+
+  int? _retryAfterSeconds(String message) {
+    final match = RegExp(r'rate_limit:(\d+)').firstMatch(message);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
   }
 
   String _cleanJsonResponse(String value) {

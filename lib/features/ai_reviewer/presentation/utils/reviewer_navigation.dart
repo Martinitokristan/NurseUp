@@ -11,9 +11,17 @@ void openOrGenerateReviewer({
   required String fileId,
 }) {
   final reviewerId = ref.read(reviewerIdForFileProvider(fileId));
+  final generationState = ref.read(generateReviewerControllerProvider);
 
   if (reviewerId != null && reviewerId.isNotEmpty) {
     context.push('${AppRoutes.reviewerDetail}?id=$reviewerId&from=file');
+    return;
+  }
+
+  if (generationState.isGenerating) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reviewer generation is already in progress. Please wait.')),
+    );
     return;
   }
 

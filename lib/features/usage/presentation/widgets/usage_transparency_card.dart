@@ -31,7 +31,10 @@ class UsageTransparencyCard extends StatelessWidget {
     final isWeeklyLimitReached = usage.wordsUsedThisWeek >= weeklyWordMax;
 
     final dailyFileMax = limits.dailyFiles;
-    final isDailyFileLimitReached = usage.dailyFileUploads >= dailyFileMax;
+    final isDailyFileLimitReached = !isPro && usage.dailyFileUploads >= dailyFileMax;
+    final filesTodayLabel = isPro
+        ? 'Files Today: ${usage.dailyFileUploads}'
+        : 'Files Today: ${usage.dailyFileUploads} / $dailyFileMax';
 
     final dailyResetStr = usage.dailyResetDate != null
         ? 'Resets ${formatPhReset(usage.dailyResetDate!)}'
@@ -78,7 +81,7 @@ class UsageTransparencyCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Files today: ${usage.dailyFileUploads} / $dailyFileMax',
+                  filesTodayLabel,
                   style: AppTextStyles.bodySmall.copyWith(
                       color: isDailyFileLimitReached ? AppColors.error : AppColors.textSecondary),
                 ),
