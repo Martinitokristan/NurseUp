@@ -56,8 +56,8 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     final usage = ref.watch(usageProvider).valueOrNull;
     final plan = ref.watch(activePlanProvider);
     final isFree = !plan.isPro;
-    final dailyLimit = isFree ? 500 : 10000;
-    final weeklyLimit = isFree ? 1000 : plan.weeklyWordLimit;
+    final dailyLimit = isFree ? 500 : 1000;
+    final weeklyLimit = isFree ? 1000 : 5000;
     final dailyFileLimit = isFree ? 3 : 999999;
     final dailyBlocked = usage != null && usage.wordsUsedToday >= dailyLimit;
     final weeklyBlocked = usage != null && usage.wordsUsedThisWeek >= weeklyLimit;

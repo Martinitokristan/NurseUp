@@ -29,4 +29,12 @@ class PhilippineTime {
     final start = startOfWeek();
     return start.add(const Duration(days: 7));
   }
+
+  /// Calculates the rolling daily reset time: 24 hours from the given UTC start time.
+  static DateTime rollingDailyResetFrom(DateTime startUtc) =>
+      startUtc.add(const Duration(hours: 24));
+
+  /// Calculates the rolling weekly reset time: 7 days from the given UTC start time.
+  static DateTime rollingWeeklyResetFrom(DateTime startUtc) =>
+      startUtc.add(const Duration(days: 7));
 }

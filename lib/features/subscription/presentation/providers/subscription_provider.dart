@@ -131,6 +131,20 @@ class SubscriptionController extends StateNotifier<SubscriptionActionState> {
           .collection('subscriptions')
           .doc(user.uid)
           .set(sub.toFirestore(), SetOptions(merge: true));
+      
+      // Sync Pro tier to usage doc
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('usage')
+          .doc('current')
+          .set({
+            'tier': 'pro',
+            'plan_started_at': Timestamp.fromDate(now),
+            'plan_expires_at': Timestamp.fromDate(now.add(Duration(days: durationDays))),
+            'updated_at': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      
       state = const SubscriptionActionState(
           successMessage: 'Pro activated. Enjoy!');
       return true;

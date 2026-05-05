@@ -1,6 +1,4 @@
-﻿import 'dart:convert';
-
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -175,7 +173,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _ModelSurface extends StatefulWidget {
+class _ModelSurface extends StatelessWidget {
   const _ModelSurface({required this.assetPath, required this.autoRotate, required this.hotspots, required this.showLabels, required this.onHotspotTap, required this.fallbackIcon});
 
   final String assetPath;
@@ -186,17 +184,9 @@ class _ModelSurface extends StatefulWidget {
   final IconData fallbackIcon;
 
   @override
-  State<_ModelSurface> createState() => _ModelSurfaceState();
-}
-
-class _ModelSurfaceState extends State<_ModelSurface> {
-  final Map<String, Offset> _hotspotScreenPositions = {};
-  final Set<String> _visibleHotspots = {};
-
-  @override
   Widget build(BuildContext context) {
     return FutureBuilder<String?>(
-      future: _resolveSource(widget.assetPath),
+      future: _resolveSource(assetPath),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -208,69 +198,37 @@ class _ModelSurfaceState extends State<_ModelSurface> {
               width: 280,
               height: 280,
               decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFD6EEFF)]), boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.18), blurRadius: 40, offset: const Offset(0, 20))]),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(widget.fallbackIcon, color: AppColors.primary, size: 112), const SizedBox(height: 12), Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('3D model unavailable.\nBundle the GLB file to view it.', style: AppTextStyles.caption, textAlign: TextAlign.center))]),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(fallbackIcon, color: AppColors.primary, size: 112), const SizedBox(height: 12), Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('3D model unavailable.\nBundle the GLB file to view it.', style: AppTextStyles.caption, textAlign: TextAlign.center))]),
             ),
           );
         }
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final size = Size(constraints.maxWidth, constraints.maxHeight);
-            return Stack(
-              children: [
-                ModelViewer(
-                  key: ValueKey(widget.assetPath),
-                  src: src,
-                  ar: true,
-                  autoRotate: widget.autoRotate,
-                  cameraControls: true,
-                  backgroundColor: Colors.transparent,
-                  disableZoom: false,
-                  innerModelViewerHtml: widget.hotspots.isNotEmpty ? _buildHotspotHtml(widget.hotspots) : null,
-                  relatedCss: widget.hotspots.isNotEmpty ? _kAnchorCss : null,
-                  relatedJs: widget.hotspots.isNotEmpty ? _kHotspotProjectionJs : null,
-                  minHotspotOpacity: 0,
-                  maxHotspotOpacity: 0,
-                  javascriptChannels: widget.hotspots.isNotEmpty
-                      ? {
-                          JavascriptChannel(
-                            'AnatomyProjectionChannel',
-                            onMessageReceived: (msg) {
-                              final decoded = jsonDecode(msg.message) as List<dynamic>;
-                              if (!mounted) return;
-                              setState(() {
-                                _hotspotScreenPositions.clear();
-                                _visibleHotspots.clear();
-                                for (final item in decoded) {
-                                  final map = item as Map<String, dynamic>;
-                                  final id = map['id']?.toString();
-                                  final x = (map['x'] as num?)?.toDouble();
-                                  final y = (map['y'] as num?)?.toDouble();
-                                  final visible = map['visible'] == true;
-                                  if (id == null || x == null || y == null) continue;
-                                  if (visible) {
-                                    _visibleHotspots.add(id);
-                                    _hotspotScreenPositions[id] = Offset(x, y);
-                                  }
-                                }
-                              });
-                            },
-                          ),
-                        }
-                      : null,
-                ),
-                if (widget.showLabels)
-                  Positioned.fill(
-                    child: _HotspotOverlay(
-                      hotspots: widget.hotspots,
-                      targetPositions: _hotspotScreenPositions,
-                      visibleHotspots: _visibleHotspots,
-                      size: size,
-                      onTap: widget.onHotspotTap,
-                    ),
+        return ModelViewer(
+          key: ValueKey('${assetPath}_${showLabels ? 'labels' : 'nolabels'}'),
+          src: src,
+          ar: true,
+          autoRotate: autoRotate,
+          cameraControls: true,
+          backgroundColor: Colors.transparent,
+          disableZoom: false,
+          innerModelViewerHtml: hotspots.isNotEmpty ? _buildHotspotHtml(hotspots, showLabels: showLabels) : null,
+          relatedCss: hotspots.isNotEmpty ? _kHotspotCss : null,
+          minHotspotOpacity: 0,
+          maxHotspotOpacity: showLabels ? 1.0 : 0.0,
+          cameraOrbit: '0deg 75deg auto',
+          fieldOfView: '30deg',
+          minCameraOrbit: 'auto auto 0.3m',
+          maxCameraOrbit: 'auto auto 5m',
+          javascriptChannels: hotspots.isNotEmpty && showLabels
+              ? {
+                  JavascriptChannel(
+                    'AnatomyHotspotChannel',
+                    onMessageReceived: (msg) {
+                      final hotspot = _findHotspotById(hotspots, msg.message);
+                      if (hotspot != null) onHotspotTap(hotspot);
+                    },
                   ),
-              ],
-            );
-          },
+                }
+              : null,
         );
       },
     );
@@ -287,22 +245,71 @@ class _ModelSurfaceState extends State<_ModelSurface> {
   }
 }
 
-String _buildHotspotHtml(List<AnatomyHotspot> hotspots) {
+String _buildHotspotHtml(List<AnatomyHotspot> hotspots, {required bool showLabels}) {
+  if (!showLabels) return '';
   final buf = StringBuffer();
   for (final h in hotspots) {
     final safeId = _htmlEscape(h.id);
+    final safeName = _htmlEscape(h.name);
+    final direction = _hotspotDirectionClass(h.id);
     final position = _toModelViewerVector(h.position);
     final normal = _toModelViewerVector(h.normal);
+
     buf.write(
-      '<button class="anatomy-anchor" '
-      'id="anchor-$safeId" '
+      '<button class="anatomy-hotspot $direction" '
       'slot="hotspot-$safeId" '
-      'data-id="$safeId" '
       'data-position="$position" '
-      'data-normal="$normal"></button>',
+      'data-normal="$normal" '
+      'onclick="AnatomyHotspotChannel.postMessage(\'$safeId\');">'
+      '<span class="target-dot"></span>'
+      '<span class="leader-line"></span>'
+      '<span class="annotation">$safeName</span>'
+      '</button>',
     );
   }
   return buf.toString();
+}
+
+String _hotspotDirectionClass(String id) {
+  switch (id) {
+    // Brain
+    case 'frontal_lobe':
+      return 'to-right-up';
+    case 'parietal_lobe':
+      return 'to-right-up';
+    case 'temporal_lobe':
+      return 'to-left';
+    case 'occipital_lobe':
+      return 'to-left-up';
+    case 'cerebellum':
+      return 'to-right-down';
+    case 'brain_stem':
+      return 'to-right-down';
+
+    // Heart
+    case 'right_atrium':
+    case 'right_ventricle':
+    case 'tricuspid_valve':
+      return 'to-left';
+    case 'left_atrium':
+    case 'left_ventricle':
+    case 'mitral_valve':
+      return 'to-right';
+    case 'aortic_valve':
+    case 'pulmonary_valve':
+      return 'to-right-up';
+
+    default:
+      return 'to-right';
+  }
+}
+
+AnatomyHotspot? _findHotspotById(List<AnatomyHotspot> hotspots, String id) {
+  try {
+    return hotspots.firstWhere((h) => h.id == id);
+  } catch (e) {
+    return null;
+  }
 }
 
 String _toModelViewerVector(String value) {
@@ -324,217 +331,123 @@ String _htmlEscape(String text) => text
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-class _HotspotOverlay extends StatelessWidget {
-  const _HotspotOverlay({
-    required this.hotspots,
-    required this.targetPositions,
-    required this.visibleHotspots,
-    required this.size,
-    required this.onTap,
-  });
-
-  final List<AnatomyHotspot> hotspots;
-  final Map<String, Offset> targetPositions;
-  final Set<String> visibleHotspots;
-  final Size size;
-  final void Function(AnatomyHotspot) onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = hotspots
-        .where((h) => visibleHotspots.contains(h.id) && targetPositions.containsKey(h.id))
-        .toList();
-    final labelPositions = {
-      for (final hotspot in visible)
-        hotspot.id: _labelPositionFor(hotspot, targetPositions[hotspot.id]!, size),
-    };
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _HotspotLinePainter(
-              hotspots: visible,
-              targetPositions: targetPositions,
-              labelPositions: labelPositions,
-            ),
-          ),
-        ),
-        for (final hotspot in visible)
-          _HotspotLabelButton(
-            hotspot: hotspot,
-            labelPosition: labelPositions[hotspot.id]!,
-            onTap: () => onTap(hotspot),
-          ),
-      ],
-    );
-  }
-}
-
-Offset _labelPositionFor(AnatomyHotspot hotspot, Offset target, Size size) {
-  Offset offset;
-  switch (hotspot.id) {
-    case 'frontal_lobe':
-      offset = const Offset(82, -46);
-      break;
-    case 'parietal_lobe':
-      offset = const Offset(68, -74);
-      break;
-    case 'temporal_lobe':
-      offset = const Offset(-180, -26);
-      break;
-    case 'occipital_lobe':
-      offset = const Offset(-184, -44);
-      break;
-    case 'cerebellum':
-      offset = const Offset(72, 34);
-      break;
-    case 'brain_stem':
-      offset = const Offset(56, 70);
-      break;
-    default:
-      offset = target.dx < size.width / 2 ? const Offset(72, -28) : const Offset(-176, -28);
-  }
-
-  final raw = target + offset;
-  return Offset(
-    raw.dx.clamp(8.0, size.width - 150.0),
-    raw.dy.clamp(8.0, size.height - 48.0),
-  );
-}
-
-class _HotspotLinePainter extends CustomPainter {
-  const _HotspotLinePainter({
-    required this.hotspots,
-    required this.targetPositions,
-    required this.labelPositions,
-  });
-
-  final List<AnatomyHotspot> hotspots;
-  final Map<String, Offset> targetPositions;
-  final Map<String, Offset> labelPositions;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = const Color(0xFF0F1B2D).withValues(alpha: .78)
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round;
-    final dotFill = Paint()..color = AppColors.primary;
-    final dotStroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-
-    for (final hotspot in hotspots) {
-      final target = targetPositions[hotspot.id];
-      final label = labelPositions[hotspot.id];
-      if (target == null || label == null) continue;
-      final labelAnchor = label.dx > target.dx
-          ? Offset(label.dx, label.dy + 19)
-          : Offset(label.dx + 142, label.dy + 19);
-      canvas.drawLine(target, labelAnchor, linePaint);
-      canvas.drawCircle(target, 8, dotStroke);
-      canvas.drawCircle(target, 5.5, dotFill);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _HotspotLinePainter oldDelegate) => true;
-}
-
-class _HotspotLabelButton extends StatelessWidget {
-  const _HotspotLabelButton({
-    required this.hotspot,
-    required this.labelPosition,
-    required this.onTap,
-  });
-
-  final AnatomyHotspot hotspot;
-  final Offset labelPosition;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: labelPosition.dx,
-      top: labelPosition.dy,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 142,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: .96),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: AppColors.primary.withValues(alpha: .35)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .14),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Text(
-            hotspot.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(
-              color: const Color(0xFF0F1B2D),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-const String _kHotspotProjectionJs = '''
-(() => {
-  const mv = document.querySelector('model-viewer');
-  if (!mv || window.__nurseupProjectionInstalled) return;
-  window.__nurseupProjectionInstalled = true;
-
-  function postPositions() {
-    const mvRect = mv.getBoundingClientRect();
-    const anchors = Array.from(mv.querySelectorAll('.anatomy-anchor'));
-    const payload = anchors.map((anchor) => {
-      const rect = anchor.getBoundingClientRect();
-      const visible = anchor.getAttribute('data-visible') !== 'false';
-      return {
-        id: anchor.getAttribute('data-id'),
-        x: rect.left + rect.width / 2 - mvRect.left,
-        y: rect.top + rect.height / 2 - mvRect.top,
-        visible: visible
-      };
-    });
-    if (window.AnatomyProjectionChannel) {
-      window.AnatomyProjectionChannel.postMessage(JSON.stringify(payload));
-    }
-  }
-
-  mv.addEventListener('load', postPositions);
-  mv.addEventListener('camera-change', postPositions);
-  mv.addEventListener('model-visibility', postPositions);
-  setInterval(postPositions, 120);
-})();
-''';
-
-const String _kAnchorCss = '''
-.anatomy-anchor {
+const String _kHotspotCss = '''
+.anatomy-hotspot {
   display: block;
-  width: 14px;
-  height: 14px;
+  position: relative;
+  width: 0;
+  height: 0;
   border: 0;
   padding: 0;
-  border-radius: 999px;
   background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: opacity .12s ease;
+  overflow: visible;
+}
+
+.anatomy-hotspot[data-visible="false"] {
+  opacity: 0;
   pointer-events: none;
 }
-.anatomy-anchor[data-visible="false"] {
-  opacity: 0;
+
+.target-dot {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #1E88E5;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+  z-index: 3;
+}
+
+.leader-line {
+  position: absolute;
+  width: 76px;
+  height: 2px;
+  background: rgba(15,27,45,.85);
+  transform-origin: left center;
+  z-index: 2;
+}
+
+.annotation {
+  position: absolute;
+  width: 150px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.97);
+  border: 1px solid rgba(30,136,229,.35);
+  color: #0F1B2D;
+  font-family: Poppins, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 18px rgba(0,0,0,.18);
+  z-index: 1;
+}
+
+.to-right .leader-line {
+  left: 8px;
+  top: -1px;
+}
+.to-right .annotation {
+  left: 88px;
+  top: -19px;
+}
+
+.to-left .leader-line {
+  left: -84px;
+  top: -1px;
+}
+.to-left .annotation {
+  right: 88px;
+  top: -19px;
+}
+
+.to-right-up .leader-line {
+  left: 8px;
+  top: -1px;
+  transform: rotate(-24deg);
+}
+.to-right-up .annotation {
+  left: 78px;
+  top: -58px;
+}
+
+.to-left-up .leader-line {
+  left: -82px;
+  top: -1px;
+  transform: rotate(24deg);
+}
+.to-left-up .annotation {
+  right: 78px;
+  top: -58px;
+}
+
+.to-right-down .leader-line {
+  left: 8px;
+  top: -1px;
+  transform: rotate(24deg);
+}
+.to-right-down .annotation {
+  left: 78px;
+  top: 24px;
+}
+
+.to-left-down .leader-line {
+  left: -82px;
+  top: -1px;
+  transform: rotate(-24deg);
+}
+.to-left-down .annotation {
+  right: 78px;
+  top: 24px;
 }
 ''';

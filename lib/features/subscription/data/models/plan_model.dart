@@ -52,7 +52,8 @@ class PlanModel extends Equatable {
       name: data['name'] as String? ?? id,
       priceCents: (data['price_cents'] as num?)?.toInt() ?? 0,
       currency: data['currency'] as String? ?? 'PHP',
-      weeklyWordLimit: (data['weekly_word_limit'] as num?)?.toInt() ?? 500,
+      weeklyWordLimit: (data['weekly_word_limit'] as num?)?.toInt() ??
+          (id == 'pro' ? 5000 : 1000),
       monthlyUploadLimit: (data['monthly_upload_limit'] as num?)?.toInt() ?? -1,
       monthlyReviewerLimit:
           (data['monthly_reviewer_limit'] as num?)?.toInt() ?? -1,
@@ -94,7 +95,7 @@ class PlanModel extends Equatable {
     name: 'Pro Plan',
     priceCents: 30000,
     currency: 'PHP',
-    weeklyWordLimit: 50000,
+    weeklyWordLimit: 5000,
     monthlyUploadLimit: -1,
     monthlyReviewerLimit: -1,
     features: [

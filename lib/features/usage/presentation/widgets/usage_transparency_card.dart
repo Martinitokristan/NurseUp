@@ -16,19 +16,21 @@ class UsageTransparencyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isPro = usage.tier == 'pro';
 
-    final dailyWordMax = isPro ? usage.getDailyWordLimit() : 500;
+    final dailyWordMax = isPro ? 1000 : 500;
     final dailyWordPct = dailyWordMax > 0 ? (usage.wordsUsedToday / dailyWordMax).clamp(0.0, 1.0) : 0.0;
     final isDailyWordLimitReached = usage.wordsUsedToday >= dailyWordMax;
 
-    final weeklyWordMax = isPro ? usage.getWeeklyLimit() : 1000;
+    final weeklyWordMax = isPro ? 5000 : 1000;
     final weeklyWordPct = weeklyWordMax > 0 ? (usage.wordsUsedThisWeek / weeklyWordMax).clamp(0.0, 1.0) : 0.0;
     final isWeeklyLimitReached = usage.wordsUsedThisWeek >= weeklyWordMax;
 
-    final dailyFileMax = isPro ? usage.getDailyFileLimit() : 3;
+    final dailyFileMax = isPro ? 999999 : 3;
     final isDailyFileLimitReached = usage.dailyFileUploads >= dailyFileMax;
 
-    final dailyResetStr = usage.dailyResetDate != null ? formatPhReset(usage.dailyResetDate!) : 'in 24 hrs';
-    final weeklyResetStr = formatPhReset(usage.weekResetDate);
+    final dailyResetStr = usage.dailyResetDate != null
+        ? 'Resets ${formatPhReset(usage.dailyResetDate!)}'
+        : 'Starts after first upload';
+    final weeklyResetStr = 'Resets ${formatPhReset(usage.weekResetDate)}';
 
     return Card(
       child: Padding(
@@ -53,7 +55,7 @@ class UsageTransparencyCard extends StatelessWidget {
               used: usage.wordsUsedToday,
               max: dailyWordMax,
               percentage: dailyWordPct,
-              resetLabel: 'Resets $dailyResetStr',
+              resetLabel: dailyResetStr,
               isReached: isDailyWordLimitReached,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -62,7 +64,7 @@ class UsageTransparencyCard extends StatelessWidget {
               used: usage.wordsUsedThisWeek,
               max: weeklyWordMax,
               percentage: weeklyWordPct,
-              resetLabel: 'Resets $weeklyResetStr',
+              resetLabel: weeklyResetStr,
               isReached: isWeeklyLimitReached,
             ),
             const SizedBox(height: AppSpacing.md),

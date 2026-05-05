@@ -8,6 +8,8 @@ class UsageModel extends Equatable {
     required this.tier,
     this.wordsUsedToday = 0,
     this.dailyResetDate,
+    this.dailyWindowStartedAt,
+    this.weeklyWindowStartedAt,
     this.dailyFileUploads = 0,
     this.weeklyFileUploads = 0,
     this.filesUploaded = 0,
@@ -21,12 +23,31 @@ class UsageModel extends Equatable {
   final String tier;
   final int wordsUsedToday;
   final DateTime? dailyResetDate;
+  final DateTime? dailyWindowStartedAt;
+  final DateTime? weeklyWindowStartedAt;
   final int dailyFileUploads;
   final int weeklyFileUploads;
   final int filesUploaded;
   final int reviewersGenerated;
   final int streak;
   final DateTime? lastActiveDate;
+
+  @override
+  List<Object?> get props => [
+    wordsUsedThisWeek,
+    weekResetDate,
+    tier,
+    wordsUsedToday,
+    dailyResetDate,
+    dailyWindowStartedAt,
+    weeklyWindowStartedAt,
+    dailyFileUploads,
+    weeklyFileUploads,
+    filesUploaded,
+    reviewersGenerated,
+    streak,
+    lastActiveDate,
+  ];
 
   factory UsageModel.fromFirestore(Map<String, dynamic> data) {
     final resetDate = data['week_reset_date'];
@@ -35,12 +56,18 @@ class UsageModel extends Equatable {
     final lastActiveDate = lastActive is Timestamp ? lastActive.toDate() : null;
     final dailyReset = data['daily_reset_date'];
     final dailyResetDate = dailyReset is Timestamp ? dailyReset.toDate() : null;
+    final dailyWindowStart = data['daily_window_started_at'];
+    final dailyWindowStartedAt = dailyWindowStart is Timestamp ? dailyWindowStart.toDate() : null;
+    final weeklyWindowStart = data['weekly_window_started_at'];
+    final weeklyWindowStartedAt = weeklyWindowStart is Timestamp ? weeklyWindowStart.toDate() : null;
     return UsageModel(
       wordsUsedThisWeek: data['words_used_this_week'] as int? ?? 0,
       weekResetDate: weekReset,
       tier: data['tier'] as String? ?? 'free',
       wordsUsedToday: data['words_used_today'] as int? ?? 0,
       dailyResetDate: dailyResetDate,
+      dailyWindowStartedAt: dailyWindowStartedAt,
+      weeklyWindowStartedAt: weeklyWindowStartedAt,
       dailyFileUploads: data['daily_file_uploads'] as int? ?? 0,
       weeklyFileUploads: data['weekly_file_uploads'] as int? ?? 0,
       filesUploaded: data['files_uploaded'] as int? ?? 0,
@@ -57,6 +84,8 @@ class UsageModel extends Equatable {
       'tier': tier,
       'words_used_today': wordsUsedToday,
       'daily_reset_date': dailyResetDate != null ? Timestamp.fromDate(dailyResetDate!) : null,
+      'daily_window_started_at': dailyWindowStartedAt != null ? Timestamp.fromDate(dailyWindowStartedAt!) : null,
+      'weekly_window_started_at': weeklyWindowStartedAt != null ? Timestamp.fromDate(weeklyWindowStartedAt!) : null,
       'daily_file_uploads': dailyFileUploads,
       'weekly_file_uploads': weeklyFileUploads,
       'files_uploaded': filesUploaded,
@@ -66,7 +95,7 @@ class UsageModel extends Equatable {
     };
   }
 
-  int getDailyWordLimit({int? override}) => override ?? (tier == 'pro' ? 10000 : 500);
+  int getDailyWordLimit({int? override}) => override ?? (tier == 'pro' ? 1000 : 500);
 
   int getDailyRemainingWords({int? override}) =>
       getDailyWordLimit(override: override) - wordsUsedToday;
@@ -82,7 +111,7 @@ class UsageModel extends Equatable {
   /// Deprecated static defaults. Prefer passing the plan's weeklyWordLimit
   /// from `activePlanProvider` so limits stay in sync with Firestore `plans/`.
   int getWeeklyLimit({int? weeklyLimitOverride}) =>
-      weeklyLimitOverride ?? (tier == 'pro' ? 50000 : 1000);
+      weeklyLimitOverride ?? (tier == 'pro' ? 5000 : 1000);
 
   int getRemainingWords({int? weeklyLimitOverride}) =>
       getWeeklyLimit(weeklyLimitOverride: weeklyLimitOverride) -
@@ -101,7 +130,4 @@ class UsageModel extends Equatable {
   bool isLimitReached({int? weeklyLimitOverride}) =>
       wordsUsedThisWeek >=
       getWeeklyLimit(weeklyLimitOverride: weeklyLimitOverride);
-
-  @override
-  List<Object?> get props => [wordsUsedThisWeek, weekResetDate, tier, wordsUsedToday, dailyResetDate, dailyFileUploads, weeklyFileUploads, filesUploaded, reviewersGenerated, streak, lastActiveDate];
 }

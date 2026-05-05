@@ -56,18 +56,23 @@ final usageProvider = StreamProvider<UsageModel>((ref) {
       });
 });
 
-UsageModel get _emptyUsage => UsageModel(
-  wordsUsedThisWeek: 0,
-  weekResetDate: PhilippineTime.toUtc(PhilippineTime.nextWeeklyReset()),
-  tier: 'free',
-  wordsUsedToday: 0,
-  dailyResetDate: PhilippineTime.toUtc(PhilippineTime.nextDailyReset()),
-  dailyFileUploads: 0,
-  weeklyFileUploads: 0,
-  filesUploaded: 0,
-  reviewersGenerated: 0,
-  streak: 0,
-);
+UsageModel get _emptyUsage {
+  final nowUtc = DateTime.now().toUtc();
+  return UsageModel(
+    wordsUsedThisWeek: 0,
+    weekResetDate: PhilippineTime.rollingWeeklyResetFrom(nowUtc),
+    tier: 'free',
+    wordsUsedToday: 0,
+    dailyResetDate: PhilippineTime.rollingDailyResetFrom(nowUtc),
+    dailyWindowStartedAt: nowUtc,
+    weeklyWindowStartedAt: nowUtc,
+    dailyFileUploads: 0,
+    weeklyFileUploads: 0,
+    filesUploaded: 0,
+    reviewersGenerated: 0,
+    streak: 0,
+  );
+}
 
 /// Formats a UTC reset DateTime as a human-readable PH-time string.
 String formatPhReset(DateTime utcResetDate) {
@@ -196,60 +201,77 @@ class UsageController extends StateNotifier<UsageState> {
 
       return await FirebaseFirestore.instance.runTransaction((tx) async {
         final snap = await tx.get(docRef);
-        final nowPh = PhilippineTime.now();
-        final nowUtc = PhilippineTime.toUtc(nowPh);
-        final nextDailyResetUtc = PhilippineTime.toUtc(PhilippineTime.nextDailyReset());
-        final nextWeeklyResetUtc = PhilippineTime.toUtc(PhilippineTime.nextWeeklyReset());
+        final nowUtc = DateTime.now().toUtc();
 
-        int currentWeekWords = 0;
+        DateTime? dailyWindowStart;
+        DateTime? weeklyWindowStart;
+        DateTime? dailyReset;
+        DateTime? weeklyReset;
         int currentTodayWords = 0;
+        int currentWeekWords = 0;
         int currentTodayFiles = 0;
         int currentWeeklyFiles = 0;
         int currentFilesUploaded = 0;
         int currentReviewersGenerated = 0;
         int currentStreak = 0;
         DateTime? currentLastActiveDate;
-        DateTime weekReset = nextWeeklyResetUtc;
-        DateTime dailyReset = nextDailyResetUtc;
         String tier = isPro ? 'pro' : 'free';
 
         if (snap.exists) {
           final data = snap.data()!;
           final current = UsageModel.fromFirestore(data);
           tier = data['tier'] as String? ?? tier;
-          currentWeekWords = current.wordsUsedThisWeek;
-          currentTodayWords = current.wordsUsedToday;
-          currentTodayFiles = current.dailyFileUploads;
-          currentWeeklyFiles = current.weeklyFileUploads;
+          dailyWindowStart = current.dailyWindowStartedAt;
+          weeklyWindowStart = current.weeklyWindowStartedAt;
+          dailyReset = current.dailyResetDate;
+          weeklyReset = current.weekResetDate;
           currentFilesUploaded = current.filesUploaded;
           currentReviewersGenerated = current.reviewersGenerated;
           currentStreak = current.streak;
           currentLastActiveDate = current.lastActiveDate;
-          weekReset = current.weekResetDate;
-          dailyReset = current.dailyResetDate ?? nextDailyResetUtc;
 
-          if (!nowUtc.isBefore(dailyReset)) {
+          // Check if daily window has expired
+          final dailyExpired = dailyReset == null || !nowUtc.isBefore(dailyReset);
+          if (dailyExpired) {
+            dailyWindowStart = null;
+            dailyReset = null;
             currentTodayWords = 0;
             currentTodayFiles = 0;
-            dailyReset = nextDailyResetUtc;
+          } else {
+            currentTodayWords = current.wordsUsedToday;
+            currentTodayFiles = current.dailyFileUploads;
           }
 
-          if (!nowUtc.isBefore(weekReset)) {
+          // Check if weekly window has expired
+          final weeklyExpired = !nowUtc.isBefore(weeklyReset);
+          if (weeklyExpired) {
+            weeklyWindowStart = null;
+            weeklyReset = null;
             currentWeekWords = 0;
             currentWeeklyFiles = 0;
-            weekReset = nextWeeklyResetUtc;
+          } else {
+            currentWeekWords = current.wordsUsedThisWeek;
+            currentWeeklyFiles = current.weeklyFileUploads;
           }
         }
 
+        // Initialize rolling window start times if not set
+        dailyWindowStart ??= nowUtc;
+        weeklyWindowStart ??= nowUtc;
+        dailyReset ??= PhilippineTime.rollingDailyResetFrom(dailyWindowStart);
+        weeklyReset ??= PhilippineTime.rollingWeeklyResetFrom(weeklyWindowStart);
+
+        // Check weekly limit
         if (currentWeekWords + wordsAdded > weeklyWordLimit) {
           return UsageReservationResult(
             allowed: false,
             limitType: 'weekly_words',
-            resetAt: weekReset,
-            reason: 'Weekly word limit reached ($weeklyWordLimit words/week). Please come back at ${formatPhReset(weekReset)}.',
+            resetAt: weeklyReset,
+            reason: 'Weekly word limit reached ($weeklyWordLimit words/week). Please come back at ${formatPhReset(weeklyReset)}.',
           );
         }
 
+        // Check daily limit
         if (currentTodayWords + wordsAdded > dailyWordLimit) {
           return UsageReservationResult(
             allowed: false,
@@ -259,6 +281,7 @@ class UsageController extends StateNotifier<UsageState> {
           );
         }
 
+        // Check daily file limit
         if (currentTodayFiles + fileCount > dailyFileLimit) {
           return UsageReservationResult(
             allowed: false,
@@ -268,32 +291,21 @@ class UsageController extends StateNotifier<UsageState> {
           );
         }
 
-        final updatedUsage = UsageModel(
-          wordsUsedThisWeek: currentWeekWords + wordsAdded,
-          weekResetDate: weekReset,
-          tier: tier,
-          wordsUsedToday: currentTodayWords + wordsAdded,
-          dailyResetDate: dailyReset,
-          dailyFileUploads: currentTodayFiles + fileCount,
-          weeklyFileUploads: currentWeeklyFiles + fileCount,
-          filesUploaded: currentFilesUploaded + fileCount,
-          reviewersGenerated: currentReviewersGenerated,
-          streak: currentStreak,
-          lastActiveDate: currentLastActiveDate,
-        );
-        final streakUpdate = _calculateStreakUpdate(updatedUsage, nowPh);
-
+        // All checks passed, update firestore
         tx.set(docRef, {
           'tier': tier,
-          'words_used_this_week': currentWeekWords + wordsAdded,
-          'week_reset_date': Timestamp.fromDate(weekReset),
           'words_used_today': currentTodayWords + wordsAdded,
-          'daily_reset_date': Timestamp.fromDate(dailyReset),
+          'words_used_this_week': currentWeekWords + wordsAdded,
           'daily_file_uploads': currentTodayFiles + fileCount,
           'weekly_file_uploads': currentWeeklyFiles + fileCount,
           'files_uploaded': currentFilesUploaded + fileCount,
           'reviewers_generated': currentReviewersGenerated,
-          ...streakUpdate,
+          'daily_window_started_at': Timestamp.fromDate(dailyWindowStart),
+          'weekly_window_started_at': Timestamp.fromDate(weeklyWindowStart),
+          'daily_reset_date': Timestamp.fromDate(dailyReset),
+          'week_reset_date': Timestamp.fromDate(weeklyReset),
+          'streak': currentStreak,
+          'last_active_date': currentLastActiveDate != null ? Timestamp.fromDate(currentLastActiveDate) : null,
           'updated_at': FieldValue.serverTimestamp(),
           if (!snap.exists) 'created_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
