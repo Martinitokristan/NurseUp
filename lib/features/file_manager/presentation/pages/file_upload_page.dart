@@ -13,6 +13,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/utils/philippine_time.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../subscription/presentation/providers/subscription_provider.dart';
 import '../../../usage/presentation/providers/usage_provider.dart';
@@ -52,6 +53,26 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     final uploadState = ref.watch(fileUploadControllerProvider);
+    final usage = ref.watch(usageProvider).valueOrNull;
+    final plan = ref.watch(activePlanProvider);
+    final isFree = !plan.isPro;
+    final dailyLimit = isFree ? 500 : 10000;
+    final weeklyLimit = isFree ? 1000 : plan.weeklyWordLimit;
+    final dailyFileLimit = isFree ? 3 : 999999;
+    final dailyBlocked = usage != null && usage.wordsUsedToday >= dailyLimit;
+    final weeklyBlocked = usage != null && usage.wordsUsedThisWeek >= weeklyLimit;
+    final fileBlocked = usage != null && usage.dailyFileUploads >= dailyFileLimit;
+    final uploadBlocked = dailyBlocked || weeklyBlocked || fileBlocked;
+    String? blockedMessage;
+    if (usage != null) {
+      if (weeklyBlocked) {
+        blockedMessage = 'Weekly word limit reached. Please come back at ${formatPhReset(usage.weekResetDate)}.';
+      } else if (dailyBlocked) {
+        blockedMessage = 'Daily word limit reached. Please come back at ${formatPhReset(usage.dailyResetDate ?? PhilippineTime.toUtc(PhilippineTime.nextDailyReset()))}.';
+      } else if (fileBlocked) {
+        blockedMessage = 'Daily file limit reached. Please come back at ${formatPhReset(usage.dailyResetDate ?? PhilippineTime.toUtc(PhilippineTime.nextDailyReset()))}.';
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Upload File')),
@@ -77,8 +98,8 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
                     Text(uploadState.message ?? 'Tap to upload files', style: AppTextStyles.h3, textAlign: TextAlign.center),
                     const SizedBox(height: 8),
                     Text(
-                      uploadState.errorMessage ?? 'Choose Files, Photos, or Camera.\nFiles opens the full Android picker for WPS Office, Google Drive, AI Gallery, and other apps.',
-                      style: TextStyle(color: uploadState.errorMessage == null ? AppColors.textSecondary : AppColors.error, fontSize: 13),
+                      uploadState.errorMessage ?? blockedMessage ?? 'Choose Files, Photos, or Camera.\nFiles opens the full Android picker for WPS Office, Google Drive, AI Gallery, and other apps.',
+                      style: TextStyle(color: uploadState.errorMessage != null || blockedMessage != null ? AppColors.error : AppColors.textSecondary, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -102,7 +123,7 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
             AppButton(
               label: uploadState.isUploading ? 'Submitting...' : 'Submit for Review',
               icon: Icons.auto_awesome_rounded,
-              onPressed: uploadState.isUploading || _files.isEmpty ? null : _submitForReview,
+              onPressed: uploadState.isUploading || _files.isEmpty || uploadBlocked ? null : _submitForReview,
             ),
           ],
         ),
@@ -347,35 +368,34 @@ class _FileUploadPageState extends ConsumerState<FileUploadPage> with WidgetsBin
     }
 
     final totalWords = prepared.fold<int>(0, (sum, item) => sum + item.wordCount);
-    final usage = ref.read(usageProvider).valueOrNull;
-    if (usage == null) {
-      _showSnackBar('Usage status is loading. Please try again.');
-      return;
-    }
-
-    final limit = usageController.checkUploadLimit(
-      usage: usage,
-      newWords: totalWords,
-      weeklyWordLimit: plan.isPro ? plan.weeklyWordLimit : 1000,
-      dailyWordLimit: plan.isPro ? 10000 : 500,
-      dailyFileLimit: plan.isPro ? 999999 : 3,
-      newFiles: prepared.length,
+    final weeklyLimit = plan.isPro ? plan.weeklyWordLimit : 1000;
+    final dailyLimit = plan.isPro ? 10000 : 500;
+    final dailyFileLimit = plan.isPro ? 999999 : 3;
+    final reservation = await usageController.reserveUploadUsage(
+      wordsAdded: totalWords,
+      fileCount: prepared.length,
+      isPro: plan.isPro,
+      weeklyWordLimit: weeklyLimit,
+      dailyWordLimit: dailyLimit,
+      dailyFileLimit: dailyFileLimit,
     );
 
-    if (!limit.allowed) {
-      uploadController.setError(limit.reason ?? 'Usage limit reached.');
-      _showSnackBar(limit.reason ?? 'Usage limit reached.');
+    if (!mounted) return;
+    if (!reservation.allowed) {
+      final message = reservation.reason ?? 'Usage limit reached. Please try again later.';
+      uploadController.setError(message);
+      _showSnackBar(message);
       return;
     }
 
     final uploaded = await uploadController.uploadPreparedFiles(prepared);
     if (!mounted) return;
     if (uploaded.isEmpty) {
+      await usageController.refundUploadUsage(words: totalWords, fileCount: prepared.length);
       _showSnackBar(ref.read(fileUploadControllerProvider).errorMessage ?? 'Upload failed. Please try again.');
       return;
     }
 
-    await usageController.recordUsage(totalWords);
     if (mounted) router.push('${AppRoutes.reviewerGenerating}?fileId=${uploaded.first.fileId}');
   }
 
