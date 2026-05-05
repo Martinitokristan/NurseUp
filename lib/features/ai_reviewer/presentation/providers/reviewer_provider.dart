@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../anatomy_3d/domain/entities/anatomy_model_entity.dart';
+import '../../../anatomy_3d/presentation/providers/anatomy_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/groq_remote_datasource.dart';
 import '../../domain/entities/reviewer_entity.dart';
@@ -144,6 +146,21 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
         throw const GroqReviewerException('empty_generated_content');
       }
 
+      // Anatomy topic detection (best-effort — never blocks reviewer save)
+      AnatomyModelEntity? anatomyModel;
+      try {
+        final sectionText = sections.map((s) {
+          final heading = s['heading']?.toString() ?? '';
+          final rawBullets = s['bullets'];
+          final bullets = rawBullets is List ? rawBullets.join(' ') : '';
+          return '$heading $bullets';
+        }).join(' ');
+        final termText = keyTerms.map((t) => '${t['term']} ${t['definition']}').join(' ');
+        final truncated = extractedText.length > 5000 ? extractedText.substring(0, 5000) : extractedText;
+        final detectionSource = '$fileName $truncated $title $overview $sectionText $termText';
+        anatomyModel = detectAnatomyModel(detectionSource);
+      } catch (_) {}
+
       state = const GenerateReviewerState(isGenerating: true, message: 'Saving reviewer...');
       final doc = FirebaseFirestore.instance.collection('reviewers').doc(user.uid).collection('docs').doc();
       debugPrint('[NurseUp] Saving reviewer uid=${user.uid} path=${doc.path}');
@@ -161,10 +178,31 @@ class GenerateReviewerController extends StateNotifier<GenerateReviewerState> {
         'flashcards': flashcards,
         'fileId': fileId,
         'createdAt': FieldValue.serverTimestamp(),
+        'anatomyTopic': anatomyModel?.id,
+        'anatomyModelId': anatomyModel?.id,
+        'anatomyModelName': anatomyModel?.name,
+        'anatomyModelAssetPath': anatomyModel?.assetPath,
       });
 
       await _saveFlashcards(user.uid, doc.id, fileId, flashcards);
       await _recordReviewerGenerated(user.uid);
+
+      if (anatomyModel != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('study_files')
+              .doc(user.uid)
+              .collection('docs')
+              .doc(fileId)
+              .set({
+                'anatomyTopic': anatomyModel.id,
+                'anatomyModelId': anatomyModel.id,
+                'anatomyModelName': anatomyModel.name,
+                'anatomyModelAssetPath': anatomyModel.assetPath,
+                'anatomyDetectedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+        } catch (_) {}
+      }
 
       state = GenerateReviewerState(message: 'Reviewer generated.', reviewerId: doc.id);
       return true;

@@ -268,6 +268,12 @@ class ReviewerFlashcard {
   final String back;
 }
 
+class _PdfCursor {
+  _PdfCursor({required this.page, required this.y});
+  PdfPage page;
+  double y;
+}
+
 class ReviewerPdfExportService {
   const ReviewerPdfExportService();
 
@@ -296,9 +302,6 @@ class ReviewerPdfExportService {
 
     final document = PdfDocument();
     document.pageSettings.margins.all = 36;
-    final page = document.pages.add();
-    final graphics = page.graphics;
-    final width = page.getClientSize().width;
     final black = PdfColor(20, 20, 20);
     final gray = PdfColor(100, 100, 100);
     final lightGray = PdfColor(220, 220, 220);
@@ -306,62 +309,62 @@ class ReviewerPdfExportService {
     final h1Font = PdfStandardFont(PdfFontFamily.helvetica, 16, style: PdfFontStyle.bold);
     final bodyFont = PdfStandardFont(PdfFontFamily.helvetica, 11);
     final smallFont = PdfStandardFont(PdfFontFamily.helvetica, 10);
-    var y = 0.0;
 
-    graphics.drawString(reviewer.title, titleFont, brush: PdfSolidBrush(black), bounds: Rect.fromLTWH(0, y, width, 32));
-    y += 36;
-    graphics.drawString(DateFormat('MMMM d, yyyy').format(reviewer.generatedAt), smallFont, brush: PdfSolidBrush(gray), bounds: Rect.fromLTWH(0, y, width, 18));
-    y += 24;
-    graphics.drawLine(PdfPen(lightGray), Offset(0, y), Offset(width, y));
-    y += 20;
+    final cursor = _PdfCursor(page: document.pages.add(), y: 0);
+    final width = cursor.page.getClientSize().width;
+
+    cursor.page.graphics.drawString(reviewer.title, titleFont, brush: PdfSolidBrush(black), bounds: Rect.fromLTWH(0, cursor.y, width, 36));
+    cursor.y += 40;
+    cursor.page.graphics.drawString(DateFormat('MMMM d, yyyy').format(reviewer.generatedAt), smallFont, brush: PdfSolidBrush(gray), bounds: Rect.fromLTWH(0, cursor.y, width, 18));
+    cursor.y += 24;
+    cursor.page.graphics.drawLine(PdfPen(lightGray), Offset(0, cursor.y), Offset(width, cursor.y));
+    cursor.y += 20;
 
     if (reviewer.overview.isNotEmpty) {
-      y = _drawText(page, reviewer.overview, bodyFont, black, y, width);
-      y += 16;
+      _drawText(document, cursor, reviewer.overview, bodyFont, black, width);
+      cursor.y += 16;
     }
 
     for (final section in reviewer.sections) {
-      y = _drawHeading(page, section.heading, h1Font, black, y, width);
+      _drawHeading(document, cursor, section.heading, h1Font, black, width);
       for (final bullet in section.bullets) {
-        y = _drawBullet(page, bullet, bodyFont, black, y, width);
+        _drawBullet(document, cursor, bullet, bodyFont, black, width);
       }
-      y += 12;
+      cursor.y += 12;
     }
 
     if (reviewer.keyTerms.isNotEmpty) {
-      y = _drawHeading(page, 'Key Terms', h1Font, black, y, width);
+      _drawHeading(document, cursor, 'Key Terms', h1Font, black, width);
       for (final term in reviewer.keyTerms) {
-        y = _drawBullet(page, '${term.term}: ${term.definition}', bodyFont, black, y, width);
+        _drawBullet(document, cursor, '${term.term}: ${term.definition}', bodyFont, black, width);
       }
-      y += 12;
+      cursor.y += 12;
     }
 
     if (reviewer.mustRemember.isNotEmpty) {
-      y = _drawHeading(page, 'Must Remember', h1Font, black, y, width);
+      _drawHeading(document, cursor, 'Must Remember', h1Font, black, width);
       for (final item in reviewer.mustRemember) {
-        y = _drawBullet(page, item, bodyFont, black, y, width);
+        _drawBullet(document, cursor, item, bodyFont, black, width);
       }
-      y += 12;
+      cursor.y += 12;
     }
 
     if (reviewer.practiceQuestions.isNotEmpty) {
-      y = _drawHeading(page, 'Practice Questions', h1Font, black, y, width);
+      _drawHeading(document, cursor, 'Practice Questions', h1Font, black, width);
       var qNum = 1;
       for (final q in reviewer.practiceQuestions) {
-        y = _drawText(page, '$qNum. ${q.question}', bodyFont, black, y, width);
-        y = _drawText(page, '   Answer: ${q.answer}', smallFont, gray, y, width);
-        y += 8;
+        _drawText(document, cursor, '$qNum. ${q.question}', bodyFont, black, width);
+        _drawText(document, cursor, '   Answer: ${q.answer}', smallFont, gray, width, spacingAfter: 12);
         qNum++;
       }
-      y += 12;
+      cursor.y += 12;
     }
 
     if (reviewer.flashcards.isNotEmpty) {
-      y = _drawHeading(page, 'Flashcards', h1Font, black, y, width);
+      _drawHeading(document, cursor, 'Flashcards', h1Font, black, width);
       for (final card in reviewer.flashcards.take(20)) {
-        y = _drawText(page, 'Front: ${card.front}', bodyFont, black, y, width);
-        y = _drawText(page, 'Back: ${card.back}', smallFont, gray, y, width);
-        y += 10;
+        _drawText(document, cursor, 'Front: ${card.front}', bodyFont, black, width);
+        _drawText(document, cursor, 'Back: ${card.back}', smallFont, gray, width, spacingAfter: 10);
       }
     }
 
@@ -370,17 +373,36 @@ class ReviewerPdfExportService {
     return bytes;
   }
 
-  double _drawHeading(PdfPage page, String text, PdfFont font, PdfColor color, double y, double width) {
-    return _drawText(page, text, font, color, y, width) + 6;
+  void _ensureSpace(PdfDocument document, _PdfCursor cursor, double neededHeight) {
+    final pageHeight = cursor.page.getClientSize().height;
+    if (cursor.y + neededHeight > pageHeight) {
+      cursor.page = document.pages.add();
+      cursor.y = 0;
+    }
   }
 
-  double _drawText(PdfPage page, String text, PdfFont font, PdfColor color, double y, double width) {
-    final result = PdfTextElement(text: text, font: font, brush: PdfSolidBrush(color)).draw(page: page, bounds: Rect.fromLTWH(0, y, width, 800 - y), format: PdfLayoutFormat(layoutType: PdfLayoutType.paginate));
-    return (result?.bounds.bottom ?? y) + 6;
+  void _drawHeading(PdfDocument document, _PdfCursor cursor, String text, PdfFont font, PdfColor color, double width) {
+    _ensureSpace(document, cursor, 36);
+    _drawText(document, cursor, text, font, color, width, spacingAfter: 8);
   }
 
-  double _drawBullet(PdfPage page, String text, PdfFont font, PdfColor color, double y, double width) {
-    return _drawText(page, '• $text', font, color, y, width);
+  void _drawText(PdfDocument document, _PdfCursor cursor, String text, PdfFont font, PdfColor color, double width, {double spacingAfter = 6}) {
+    final pageHeight = cursor.page.getClientSize().height;
+    final result = PdfTextElement(text: text, font: font, brush: PdfSolidBrush(color)).draw(
+      page: cursor.page,
+      bounds: Rect.fromLTWH(0, cursor.y, width, pageHeight - cursor.y),
+      format: PdfLayoutFormat(layoutType: PdfLayoutType.paginate),
+    );
+    if (result != null) {
+      cursor.page = result.page;
+      cursor.y = result.bounds.bottom + spacingAfter;
+    } else {
+      cursor.y += spacingAfter;
+    }
+  }
+
+  void _drawBullet(PdfDocument document, _PdfCursor cursor, String text, PdfFont font, PdfColor color, double width) {
+    _drawText(document, cursor, '• $text', font, color, width);
   }
 
   Future<Directory> _downloadsDirectory() async {

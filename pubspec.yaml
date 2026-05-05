@@ -64,8 +64,5 @@ flutter:
     - assets/animations/
     - assets/images/
     - assets/icons/
+    - assets/models/anatomy/
     - .env
-  # NOTE: 3D anatomy GLB models are intentionally NOT bundled (they total ~170MB).
-  # They live in `models_offline/anatomy/` and are loaded from network at runtime
-  # via `lib/core/config/app_config.dart -> kAnatomyModelBaseUrl`.
-  # Upload them to Firebase Storage / a CDN and set the base URL there.

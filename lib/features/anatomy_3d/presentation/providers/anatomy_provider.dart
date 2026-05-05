@@ -3,152 +3,93 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/anatomy_model_entity.dart';
 import '../../../file_manager/presentation/providers/file_manager_provider.dart';
-import '../../../usage/presentation/providers/usage_provider.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 
-// All available anatomy models (static definition)
+// Confirmed models with available GLB assets
 final _allAnatomyModels = const [
   AnatomyModelEntity(id: 'brain', name: 'Brain', assetPath: 'assets/models/anatomy/brain.glb', parts: 8, iconCodePoint: 0xe3f3, category: 'Nervous System'),
   AnatomyModelEntity(id: 'heart', name: 'Heart', assetPath: 'assets/models/anatomy/heart.glb', parts: 8, iconCodePoint: 0xe25b, category: 'Cardiovascular'),
   AnatomyModelEntity(id: 'lungs', name: 'Lungs', assetPath: 'assets/models/anatomy/lungs.glb', parts: 7, iconCodePoint: 0xe3a8, category: 'Respiratory'),
   AnatomyModelEntity(id: 'stomach', name: 'Stomach', assetPath: 'assets/models/anatomy/stomach.glb', parts: 5, iconCodePoint: 0xe56c, category: 'Digestive'),
-  AnatomyModelEntity(id: 'intestines', name: 'Intestines', assetPath: 'assets/models/anatomy/intestines.glb', parts: 6, iconCodePoint: 0xe56c, category: 'Digestive'),
   AnatomyModelEntity(id: 'liver', name: 'Liver', assetPath: 'assets/models/anatomy/liver.glb', parts: 4, iconCodePoint: 0xe56c, category: 'Digestive'),
   AnatomyModelEntity(id: 'kidney', name: 'Kidney', assetPath: 'assets/models/anatomy/kidney.glb', parts: 6, iconCodePoint: 0xe03e, category: 'Urinary'),
   AnatomyModelEntity(id: 'skeleton', name: 'Skeleton', assetPath: 'assets/models/anatomy/skeleton.glb', parts: 24, iconCodePoint: 0xe03e, category: 'Skeletal'),
-  AnatomyModelEntity(id: 'skull', name: 'Skull', assetPath: 'assets/models/anatomy/skull.glb', parts: 10, iconCodePoint: 0xe87c, category: 'Skeletal'),
-  AnatomyModelEntity(id: 'muscles', name: 'Muscles', assetPath: 'assets/models/anatomy/muscles.glb', parts: 12, iconCodePoint: 0xe3f3, category: 'Muscular'),
-  AnatomyModelEntity(id: 'reproductive_female', name: 'Female Reproductive', assetPath: 'assets/models/anatomy/reproductive_female.glb', parts: 8, iconCodePoint: 0xe91e, category: 'Reproductive'),
-  AnatomyModelEntity(id: 'reproductive_male', name: 'Male Reproductive', assetPath: 'assets/models/anatomy/reproductive_male.glb', parts: 6, iconCodePoint: 0xe91e, category: 'Reproductive'),
-  AnatomyModelEntity(id: 'thyroid', name: 'Thyroid', assetPath: 'assets/models/anatomy/thyroid.glb', parts: 4, iconCodePoint: 0xe3a8, category: 'Endocrine'),
   AnatomyModelEntity(id: 'eye', name: 'Eye', assetPath: 'assets/models/anatomy/eye.glb', parts: 7, iconCodePoint: 0xe3ab, category: 'Sensory'),
-  AnatomyModelEntity(id: 'ear', name: 'Ear', assetPath: 'assets/models/anatomy/ear.glb', parts: 5, iconCodePoint: 0xe3ab, category: 'Sensory'),
-  AnatomyModelEntity(id: 'skin', name: 'Skin', assetPath: 'assets/models/anatomy/skin.glb', parts: 3, iconCodePoint: 0xe3f3, category: 'Integumentary'),
+  AnatomyModelEntity(id: 'ear', name: 'Ear', assetPath: 'assets/models/anatomy/anatomi_telinga_ear_anatomy.glb', parts: 5, iconCodePoint: 0xe3ab, category: 'Sensory'),
 ];
 
-// Dynamic provider that returns models based on user's Pro status and uploaded topics
-final anatomyModelsProvider = Provider<List<AnatomyModelEntity>>((ref) {
-  final usageAsync = ref.watch(usageProvider);
-  final filesAsync = ref.watch(userFilesProvider);
-  
-  // If not Pro, return empty list
-  final usage = usageAsync.valueOrNull;
-  if (usage == null || usage.tier != 'pro') {
-    return [];
+/// Returns a model by its [id], or null if not found.
+AnatomyModelEntity? anatomyModelById(String? id) {
+  if (id == null || id.trim().isEmpty) return null;
+  for (final model in _allAnatomyModels) {
+    if (model.id == id) return model;
   }
-  
-  // Get user's uploaded files
-  final files = filesAsync.valueOrNull ?? [];
-  if (files.isEmpty) {
-    return [];
-  }
-  
-  // Extract topics from file names
-  final availableTopics = _extractTopicsFromFiles(files);
-  
-  // Return only models that match available topics
-  return _allAnatomyModels.where((model) => availableTopics.contains(model.id)).toList();
-});
-
-// Extract anatomy topics from file names
-Set<String> _extractTopicsFromFiles(List files) {
-  final topics = <String>{};
-  final topicMapping = {
-    'brain': ['brain', 'neurology', 'nervous', 'cerebral', 'cranial'],
-    'heart': ['heart', 'cardiac', 'cardio', 'cardiovascular'],
-    'lungs': ['lungs', 'lung', 'respiratory', 'pulmonary', 'breathing'],
-    'stomach': ['stomach', 'gastric', 'digestion', 'digestive'],
-    'intestines': ['intestine', 'bowel', 'colon'],
-    'liver': ['liver', 'hepatic', 'bile'],
-    'kidney': ['kidney', 'renal', 'urinary', 'nephro'],
-    'skeleton': ['skeleton', 'skeletal', 'bone', 'bones', 'fracture'],
-    'skull': ['skull', 'cranium', 'head'],
-    'muscles': ['muscle', 'muscular', 'myology'],
-    'reproductive_female': ['uterus', 'ovary', 'maternal', 'obstetric', 'reproductive'],
-    'reproductive_male': ['prostate', 'testicular'],
-    'thyroid': ['thyroid', 'endocrine', 'hormone'],
-    'eye': ['eye', 'vision', 'ocular', 'optic'],
-    'ear': ['ear', 'hearing', 'auditory'],
-    'skin': ['skin', 'integumentary', 'dermal', 'wound'],
-  };
-  
-  for (final file in files) {
-    final fileName = file.name.toLowerCase();
-    topicMapping.forEach((modelId, keywords) {
-      for (final keyword in keywords) {
-        if (fileName.contains(keyword)) {
-          topics.add(modelId);
-          break;
-        }
-      }
-    });
-  }
-  
-  return topics;
+  return null;
 }
 
-final topicToModelProvider = Provider<Map<String, String>>((ref) {
-  return const {
-    'brain': 'assets/models/anatomy/brain.glb',
-    'neurology': 'assets/models/anatomy/brain.glb',
-    'nervous': 'assets/models/anatomy/brain.glb',
-    'cerebral': 'assets/models/anatomy/brain.glb',
-    'cranial': 'assets/models/anatomy/brain.glb',
-    'heart': 'assets/models/anatomy/heart.glb',
-    'cardiac': 'assets/models/anatomy/heart.glb',
-    'cardio': 'assets/models/anatomy/heart.glb',
-    'cardiovascular': 'assets/models/anatomy/heart.glb',
-    'lungs': 'assets/models/anatomy/lungs.glb',
-    'lung': 'assets/models/anatomy/lungs.glb',
-    'respiratory': 'assets/models/anatomy/lungs.glb',
-    'pulmonary': 'assets/models/anatomy/lungs.glb',
-    'breathing': 'assets/models/anatomy/lungs.glb',
-    'stomach': 'assets/models/anatomy/stomach.glb',
-    'gastric': 'assets/models/anatomy/stomach.glb',
-    'digestion': 'assets/models/anatomy/stomach.glb',
-    'digestive': 'assets/models/anatomy/stomach.glb',
-    'intestine': 'assets/models/anatomy/intestines.glb',
-    'bowel': 'assets/models/anatomy/intestines.glb',
-    'colon': 'assets/models/anatomy/intestines.glb',
-    'liver': 'assets/models/anatomy/liver.glb',
-    'hepatic': 'assets/models/anatomy/liver.glb',
-    'bile': 'assets/models/anatomy/liver.glb',
-    'kidney': 'assets/models/anatomy/kidney.glb',
-    'renal': 'assets/models/anatomy/kidney.glb',
-    'urinary': 'assets/models/anatomy/kidney.glb',
-    'nephro': 'assets/models/anatomy/kidney.glb',
-    'skeleton': 'assets/models/anatomy/skeleton.glb',
-    'skeletal': 'assets/models/anatomy/skeleton.glb',
-    'bone': 'assets/models/anatomy/skeleton.glb',
-    'bones': 'assets/models/anatomy/skeleton.glb',
-    'fracture': 'assets/models/anatomy/skeleton.glb',
-    'skull': 'assets/models/anatomy/skull.glb',
-    'cranium': 'assets/models/anatomy/skull.glb',
-    'head': 'assets/models/anatomy/skull.glb',
-    'muscle': 'assets/models/anatomy/muscles.glb',
-    'muscular': 'assets/models/anatomy/muscles.glb',
-    'myology': 'assets/models/anatomy/muscles.glb',
-    'uterus': 'assets/models/anatomy/reproductive_female.glb',
-    'ovary': 'assets/models/anatomy/reproductive_female.glb',
-    'maternal': 'assets/models/anatomy/reproductive_female.glb',
-    'obstetric': 'assets/models/anatomy/reproductive_female.glb',
-    'reproductive': 'assets/models/anatomy/reproductive_female.glb',
-    'prostate': 'assets/models/anatomy/reproductive_male.glb',
-    'testicular': 'assets/models/anatomy/reproductive_male.glb',
-    'thyroid': 'assets/models/anatomy/thyroid.glb',
-    'endocrine': 'assets/models/anatomy/thyroid.glb',
-    'hormone': 'assets/models/anatomy/thyroid.glb',
-    'eye': 'assets/models/anatomy/eye.glb',
-    'vision': 'assets/models/anatomy/eye.glb',
-    'ocular': 'assets/models/anatomy/eye.glb',
-    'optic': 'assets/models/anatomy/eye.glb',
-    'ear': 'assets/models/anatomy/ear.glb',
-    'hearing': 'assets/models/anatomy/ear.glb',
-    'auditory': 'assets/models/anatomy/ear.glb',
-    'skin': 'assets/models/anatomy/skin.glb',
-    'integumentary': 'assets/models/anatomy/skin.glb',
-    'dermal': 'assets/models/anatomy/skin.glb',
-    'wound': 'assets/models/anatomy/skin.glb',
-  };
+/// Keyword map used for scoring-based topic detection.
+/// Multi-word keywords score 3x; single-word keywords score 1x per occurrence.
+const Map<String, List<String>> anatomyTopicKeywords = {
+  'brain': ['brain', 'neurology', 'neurological', 'nervous system', 'cerebral', 'cerebellum', 'brainstem', 'brain stem', 'neuron', 'cranial nerve', 'stroke', 'seizure', 'gcs'],
+  'heart': ['heart', 'cardiac', 'cardio', 'cardiovascular', 'myocardial', 'atrium', 'ventricle', 'ecg', 'ekg', 'arrhythmia', 'hypertension', 'heart failure', 'coronary'],
+  'lungs': ['lung', 'lungs', 'respiratory', 'pulmonary', 'breathing', 'oxygenation', 'alveoli', 'bronchi', 'asthma', 'copd', 'pneumonia', 'airway'],
+  'stomach': ['stomach', 'gastric', 'digestion', 'digestive', 'abdomen', 'gastrointestinal', 'nausea', 'vomiting', 'ulcer'],
+  'liver': ['liver', 'hepatic', 'hepatitis', 'bile', 'bilirubin', 'cirrhosis', 'jaundice'],
+  'kidney': ['kidney', 'kidneys', 'renal', 'urinary', 'nephron', 'urine', 'creatinine', 'bun', 'dialysis', 'uti'],
+  'skeleton': ['skeleton', 'skeletal', 'bone', 'bones', 'fracture', 'joint', 'orthopedic', 'osteoporosis', 'spine', 'vertebra'],
+  'eye': ['eye', 'eyes', 'vision', 'visual', 'ocular', 'optic', 'retina', 'pupil', 'cataract', 'glaucoma'],
+  'ear': ['ear', 'ears', 'hearing', 'auditory', 'tympanic', 'cochlea', 'otitis', 'vestibular'],
+};
+
+/// Detects the most likely anatomy model ID from free text using keyword scoring.
+/// Returns null if confidence is too low (score < 2).
+String? detectAnatomyTopic(String text) {
+  final normalized = text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ');
+  final scores = <String, int>{};
+
+  anatomyTopicKeywords.forEach((modelId, keywords) {
+    var score = 0;
+    for (final keyword in keywords) {
+      final pattern = RegExp('(^|\\s)${RegExp.escape(keyword.toLowerCase())}(\\s|\$)');
+      final matches = pattern.allMatches(normalized).length;
+      if (matches > 0) score += matches * (keyword.contains(' ') ? 3 : 1);
+    }
+    if (score > 0) scores[modelId] = score;
+  });
+
+  if (scores.isEmpty) return null;
+  final ranked = scores.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  if (ranked.first.value < 2) return null;
+  return ranked.first.key;
+}
+
+/// Detects and returns the matching [AnatomyModelEntity] from text, or null.
+AnatomyModelEntity? detectAnatomyModel(String text) => anatomyModelById(detectAnatomyTopic(text));
+
+/// All confirmed anatomy models — use for catalog display (Pro only).
+final allAnatomyModelsProvider = Provider<List<AnatomyModelEntity>>((ref) => _allAnatomyModels);
+
+/// Models matching the user's uploaded file topics (Pro only).
+/// Falls back to all models when no files have detected topics.
+final anatomyModelsProvider = Provider<List<AnatomyModelEntity>>((ref) {
+  final isPro = ref.watch(subscriptionProvider);
+  if (!isPro) return const [];
+
+  final files = ref.watch(userFilesProvider).valueOrNull ?? const [];
+  if (files.isEmpty) return _allAnatomyModels;
+
+  final modelIds = <String>{};
+  for (final file in files) {
+    if (file.anatomyModelId != null && anatomyModelById(file.anatomyModelId) != null) {
+      modelIds.add(file.anatomyModelId!);
+      continue;
+    }
+    final fallbackId = detectAnatomyTopic(file.name);
+    if (fallbackId != null) modelIds.add(fallbackId);
+  }
+
+  if (modelIds.isEmpty) return _allAnatomyModels;
+  return _allAnatomyModels.where((m) => modelIds.contains(m.id)).toList();
 });
 
 IconData anatomyIcon(AnatomyModelEntity model) {
@@ -173,99 +114,6 @@ IconData anatomyIcon(AnatomyModelEntity model) {
     default:
       return Icons.medical_services;
   }
-}
-
-String? detectAnatomyTopic(String text) {
-  final topicToModel = const {
-    'brain': 'assets/models/anatomy/brain.glb',
-    'neurology': 'assets/models/anatomy/brain.glb',
-    'nervous': 'assets/models/anatomy/brain.glb',
-    'cerebral': 'assets/models/anatomy/brain.glb',
-    'cranial': 'assets/models/anatomy/brain.glb',
-    'heart': 'assets/models/anatomy/heart.glb',
-    'cardiac': 'assets/models/anatomy/heart.glb',
-    'cardio': 'assets/models/anatomy/heart.glb',
-    'cardiovascular': 'assets/models/anatomy/heart.glb',
-    'lungs': 'assets/models/anatomy/lungs.glb',
-    'lung': 'assets/models/anatomy/lungs.glb',
-    'respiratory': 'assets/models/anatomy/lungs.glb',
-    'pulmonary': 'assets/models/anatomy/lungs.glb',
-    'breathing': 'assets/models/anatomy/lungs.glb',
-    'stomach': 'assets/models/anatomy/stomach.glb',
-    'gastric': 'assets/models/anatomy/stomach.glb',
-    'digestion': 'assets/models/anatomy/stomach.glb',
-    'digestive': 'assets/models/anatomy/stomach.glb',
-    'intestine': 'assets/models/anatomy/intestines.glb',
-    'bowel': 'assets/models/anatomy/intestines.glb',
-    'colon': 'assets/models/anatomy/intestines.glb',
-    'liver': 'assets/models/anatomy/liver.glb',
-    'hepatic': 'assets/models/anatomy/liver.glb',
-    'bile': 'assets/models/anatomy/liver.glb',
-    'kidney': 'assets/models/anatomy/kidney.glb',
-    'renal': 'assets/models/anatomy/kidney.glb',
-    'urinary': 'assets/models/anatomy/kidney.glb',
-    'nephro': 'assets/models/anatomy/kidney.glb',
-    'skeleton': 'assets/models/anatomy/skeleton.glb',
-    'skeletal': 'assets/models/anatomy/skeleton.glb',
-    'bone': 'assets/models/anatomy/skeleton.glb',
-    'bones': 'assets/models/anatomy/skeleton.glb',
-    'fracture': 'assets/models/anatomy/skeleton.glb',
-    'skull': 'assets/models/anatomy/skull.glb',
-    'cranium': 'assets/models/anatomy/skull.glb',
-    'head': 'assets/models/anatomy/skull.glb',
-    'muscle': 'assets/models/anatomy/muscles.glb',
-    'muscular': 'assets/models/anatomy/muscles.glb',
-    'myology': 'assets/models/anatomy/muscles.glb',
-    'uterus': 'assets/models/anatomy/reproductive_female.glb',
-    'ovary': 'assets/models/anatomy/reproductive_female.glb',
-    'maternal': 'assets/models/anatomy/reproductive_female.glb',
-    'obstetric': 'assets/models/anatomy/reproductive_female.glb',
-    'reproductive': 'assets/models/anatomy/reproductive_female.glb',
-    'prostate': 'assets/models/anatomy/reproductive_male.glb',
-    'testicular': 'assets/models/anatomy/reproductive_male.glb',
-    'thyroid': 'assets/models/anatomy/thyroid.glb',
-    'endocrine': 'assets/models/anatomy/thyroid.glb',
-    'hormone': 'assets/models/anatomy/thyroid.glb',
-    'eye': 'assets/models/anatomy/eye.glb',
-    'vision': 'assets/models/anatomy/eye.glb',
-    'ocular': 'assets/models/anatomy/eye.glb',
-    'optic': 'assets/models/anatomy/eye.glb',
-    'ear': 'assets/models/anatomy/ear.glb',
-    'hearing': 'assets/models/anatomy/ear.glb',
-    'auditory': 'assets/models/anatomy/ear.glb',
-    'skin': 'assets/models/anatomy/skin.glb',
-    'integumentary': 'assets/models/anatomy/skin.glb',
-    'dermal': 'assets/models/anatomy/skin.glb',
-    'wound': 'assets/models/anatomy/skin.glb',
-  };
-  
-  final lowerText = text.toLowerCase();
-  for (final keyword in topicToModel.keys) {
-    if (lowerText.contains(keyword)) {
-      final modelPath = topicToModel[keyword]!;
-      final models = const [
-        AnatomyModelEntity(id: 'brain', name: 'Brain', assetPath: 'assets/models/anatomy/brain.glb', parts: 8, iconCodePoint: 0xe3f3, category: 'Nervous System'),
-        AnatomyModelEntity(id: 'heart', name: 'Heart', assetPath: 'assets/models/anatomy/heart.glb', parts: 8, iconCodePoint: 0xe25b, category: 'Cardiovascular'),
-        AnatomyModelEntity(id: 'lungs', name: 'Lungs', assetPath: 'assets/models/anatomy/lungs.glb', parts: 7, iconCodePoint: 0xe3a8, category: 'Respiratory'),
-        AnatomyModelEntity(id: 'stomach', name: 'Stomach', assetPath: 'assets/models/anatomy/stomach.glb', parts: 5, iconCodePoint: 0xe56c, category: 'Digestive'),
-        AnatomyModelEntity(id: 'intestines', name: 'Intestines', assetPath: 'assets/models/anatomy/intestines.glb', parts: 6, iconCodePoint: 0xe56c, category: 'Digestive'),
-        AnatomyModelEntity(id: 'liver', name: 'Liver', assetPath: 'assets/models/anatomy/liver.glb', parts: 4, iconCodePoint: 0xe56c, category: 'Digestive'),
-        AnatomyModelEntity(id: 'kidney', name: 'Kidney', assetPath: 'assets/models/anatomy/kidney.glb', parts: 6, iconCodePoint: 0xe03e, category: 'Urinary'),
-        AnatomyModelEntity(id: 'skeleton', name: 'Skeleton', assetPath: 'assets/models/anatomy/skeleton.glb', parts: 24, iconCodePoint: 0xe03e, category: 'Skeletal'),
-        AnatomyModelEntity(id: 'skull', name: 'Skull', assetPath: 'assets/models/anatomy/skull.glb', parts: 10, iconCodePoint: 0xe87c, category: 'Skeletal'),
-        AnatomyModelEntity(id: 'muscles', name: 'Muscles', assetPath: 'assets/models/anatomy/muscles.glb', parts: 12, iconCodePoint: 0xe3f3, category: 'Muscular'),
-        AnatomyModelEntity(id: 'reproductive_female', name: 'Female Reproductive', assetPath: 'assets/models/anatomy/reproductive_female.glb', parts: 8, iconCodePoint: 0xe91e, category: 'Reproductive'),
-        AnatomyModelEntity(id: 'reproductive_male', name: 'Male Reproductive', assetPath: 'assets/models/anatomy/reproductive_male.glb', parts: 6, iconCodePoint: 0xe91e, category: 'Reproductive'),
-        AnatomyModelEntity(id: 'thyroid', name: 'Thyroid', assetPath: 'assets/models/anatomy/thyroid.glb', parts: 4, iconCodePoint: 0xe3a8, category: 'Endocrine'),
-        AnatomyModelEntity(id: 'eye', name: 'Eye', assetPath: 'assets/models/anatomy/eye.glb', parts: 7, iconCodePoint: 0xe3ab, category: 'Sensory'),
-        AnatomyModelEntity(id: 'ear', name: 'Ear', assetPath: 'assets/models/anatomy/ear.glb', parts: 5, iconCodePoint: 0xe3ab, category: 'Sensory'),
-        AnatomyModelEntity(id: 'skin', name: 'Skin', assetPath: 'assets/models/anatomy/skin.glb', parts: 3, iconCodePoint: 0xe3f3, category: 'Integumentary'),
-      ];
-      final model = models.firstWhere((m) => m.assetPath == modelPath);
-      return model.id;
-    }
-  }
-  return null;
 }
 
 final anatomyHotspotsProvider = Provider<Map<String, List<AnatomyHotspot>>>((ref) {

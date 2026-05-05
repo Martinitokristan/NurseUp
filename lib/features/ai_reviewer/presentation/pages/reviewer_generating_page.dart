@@ -62,7 +62,7 @@ class _ReviewerGeneratingPageState extends ConsumerState<ReviewerGeneratingPage>
     
     if (controller.reviewerId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('${AppRoutes.reviewerDetail}?id=${controller.reviewerId}');
+        if (context.mounted) context.go('${AppRoutes.reviewerDetail}?id=${controller.reviewerId}&from=generate');
       });
     }
     

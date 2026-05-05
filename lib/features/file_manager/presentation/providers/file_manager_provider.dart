@@ -35,6 +35,9 @@ final userFilesProvider = StreamProvider<List<StudyFileEntity>>((ref) {
             sizeBytes: data['sizeBytes'] as int? ?? 0,
             type: data['type'] as String? ?? 'pdf',
             downloadUrl: data['downloadUrl'] as String?,
+            anatomyTopic: data['anatomyTopic'] as String?,
+            anatomyModelId: data['anatomyModelId'] as String?,
+            anatomyModelName: data['anatomyModelName'] as String?,
           );
         }).toList();
       });

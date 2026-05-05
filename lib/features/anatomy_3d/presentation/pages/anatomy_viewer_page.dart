@@ -4,12 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
-import '../../../../core/config/app_config.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../providers/anatomy_provider.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 
 class AnatomyViewerPage extends ConsumerStatefulWidget {
   const AnatomyViewerPage({super.key});
@@ -32,19 +32,13 @@ class _AnatomyViewerPageState extends ConsumerState<AnatomyViewerPage> {
 
   void _checkTopicDetection(BuildContext context) {
     if (_checkedTopic) return;
-    final query = GoRouterState.of(context).uri.queryParameters;
-    final modelId = query['modelId'];
-    final text = query['text'];
-    
-    if (modelId == null && text != null) {
-      final detectedModelId = detectAnatomyTopic(text);
-      if (detectedModelId != null) {
-        if (mounted) context.push('${AppRoutes.anatomyViewer}?modelId=$detectedModelId');
-      } else {
-        if (mounted) context.push(AppRoutes.anatomy);
-      }
-    }
     _checkedTopic = true;
+    final modelId = GoRouterState.of(context).uri.queryParameters['modelId'];
+    if (modelId == null || modelId.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go(AppRoutes.anatomy);
+      });
+    }
   }
 
   @override
@@ -52,11 +46,49 @@ class _AnatomyViewerPageState extends ConsumerState<AnatomyViewerPage> {
     final query = GoRouterState.of(context).uri.queryParameters;
     final modelId = query['modelId'];
     
-    if (modelId == null) {
+    final isPro = ref.watch(subscriptionProvider);
+    if (!isPro) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('3D Anatomy')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_rounded, size: 64, color: AppColors.primary),
+                const SizedBox(height: AppSpacing.lg),
+                const Text('3D Anatomy is a Pro feature.', style: AppTextStyles.h3, textAlign: TextAlign.center),
+                const SizedBox(height: AppSpacing.md),
+                ElevatedButton(onPressed: () => context.push(AppRoutes.paywall), child: const Text('Upgrade to Pro')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (modelId == null || modelId.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    
-    final model = ref.watch(anatomyModelsProvider).firstWhere((item) => item.id == modelId, orElse: () => ref.watch(anatomyModelsProvider).first);
+
+    final model = anatomyModelById(modelId);
+    if (model == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('3D Anatomy')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('This 3D model is not available.', style: AppTextStyles.body),
+              const SizedBox(height: AppSpacing.md),
+              OutlinedButton(onPressed: () => context.go(AppRoutes.anatomy), child: const Text('Back to Catalog')),
+            ],
+          ),
+        ),
+      );
+    }
+
     final hotspots = ref.watch(anatomyHotspotsProvider)[modelId] ?? [];
     return Scaffold(
       body: Container(
@@ -64,7 +96,7 @@ class _AnatomyViewerPageState extends ConsumerState<AnatomyViewerPage> {
         child: SafeArea(
           child: Stack(
             children: [
-              Positioned(top: 8, left: 8, child: IconButton.filledTonal(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded))),
+              Positioned(top: 8, left: 8, child: IconButton.filledTonal(onPressed: () { if (context.canPop()) { context.pop(); } else { context.go(AppRoutes.anatomy); } }, icon: const Icon(Icons.arrow_back_rounded))),
               Positioned(top: 22, left: 72, child: Text('${model.name} Model', style: AppTextStyles.h2)),
               Positioned.fill(top: 76, bottom: 118, child: _ModelSurface(assetPath: model.assetPath, autoRotate: autoRotate, hotspots: hotspots, showLabels: labels, onHotspotTap: (hotspot) => _showHotspotInfo(context, hotspot), fallbackIcon: anatomyIcon(model))),
               Positioned(
@@ -151,18 +183,14 @@ class _ModelSurface extends StatelessWidget {
   }
 
   /// Resolves the actual `src` to feed into [ModelViewer].
-  /// 1. Try local bundled asset.
-  /// 2. Fall back to network URL = `kAnatomyModelBaseUrl + filename`, if base set.
-  /// 3. Otherwise return null to render the placeholder.
+  /// Tries the bundled asset first; returns null to show placeholder on failure.
   static Future<String?> _resolveSource(String assetPath) async {
     try {
       await rootBundle.load(assetPath);
       return assetPath;
-    } catch (_) {
-      if (kAnatomyModelBaseUrl.isEmpty) return null;
-      final fileName = assetPath.split('/').last;
-      final base = kAnatomyModelBaseUrl.endsWith('/') ? kAnatomyModelBaseUrl : '$kAnatomyModelBaseUrl/';
-      return '$base$fileName';
+    } catch (error) {
+      debugPrint('[NurseUp] Missing bundled GLB asset: $assetPath — $error');
+      return null;
     }
   }
 }

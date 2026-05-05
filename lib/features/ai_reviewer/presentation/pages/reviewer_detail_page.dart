@@ -9,6 +9,9 @@ import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../../anatomy_3d/domain/entities/anatomy_model_entity.dart';
+import '../../../anatomy_3d/presentation/providers/anatomy_provider.dart';
+import '../../../subscription/presentation/providers/subscription_provider.dart';
 import '../../data/services/reviewer_pdf_export_service.dart';
 import '../providers/reviewer_provider.dart';
 
@@ -27,18 +30,41 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
   bool _shownInitialExportSheet = false;
   bool _isExporting = false;
 
+  void _leaveReviewer(BuildContext context, {required bool openedAfterGenerate}) {
+    if (openedAfterGenerate) {
+      context.go(AppRoutes.home);
+    } else if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(AppRoutes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final reviewerId = widget.reviewerId ?? GoRouterState.of(context).uri.queryParameters['id'] ?? '';
+    final params = GoRouterState.of(context).uri.queryParameters;
+    final reviewerId = widget.reviewerId ?? params['id'] ?? '';
+    final openedAfterGenerate = params['from'] == 'generate';
     final reviewerAsync = ref.watch(reviewerDocumentProvider(reviewerId));
+    final isPro = ref.watch(subscriptionProvider);
 
-    return reviewerAsync.when(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leaveReviewer(context, openedAfterGenerate: openedAfterGenerate);
+      },
+      child: reviewerAsync.when(
       data: (data) {
+        final anatomyModelId = data?['anatomyModelId'] as String?;
+        final anatomyModel = anatomyModelById(anatomyModelId);
         final reviewer = ReviewerPdfData.fromFirestore(data ?? _demoDetailData);
 
         if (!reviewer.hasContent) {
           return Scaffold(
-            appBar: AppBar(title: Text(reviewer.title)),
+            appBar: AppBar(
+              leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => _leaveReviewer(context, openedAfterGenerate: openedAfterGenerate)),
+              title: Text(reviewer.title),
+            ),
             body: Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
@@ -73,11 +99,15 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
           });
         }
         return Scaffold(
-          appBar: AppBar(title: Text(reviewer.title)),
+          appBar: AppBar(
+            leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => _leaveReviewer(context, openedAfterGenerate: openedAfterGenerate)),
+            title: Text(reviewer.title),
+          ),
           body: ListView(
             padding: const EdgeInsets.all(AppSpacing.lg),
             children: [
               Container(padding: const EdgeInsets.all(AppSpacing.lg), decoration: BoxDecoration(color: AppColors.primarySurface, borderRadius: BorderRadius.circular(AppSpacing.radiusLg)), child: Text(reviewer.overview, style: AppTextStyles.body)),
+              if (anatomyModel != null) ...[const SizedBox(height: AppSpacing.md), _anatomyModelCard(context, model: anatomyModel, isPro: isPro)],
               const SizedBox(height: AppSpacing.xl),
               ...reviewer.sections.map(
                 (section) => Card(
@@ -163,6 +193,53 @@ class _ReviewerDetailPageState extends ConsumerState<ReviewerDetailPage> {
       },
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (_, _) => const Scaffold(body: Center(child: Text('Unable to load reviewer.'))),
+    ),
+  );
+  }
+
+  Widget _anatomyModelCard(BuildContext context, {required AnatomyModelEntity model, required bool isPro}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+        boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 18, offset: const Offset(0, 8))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(color: AppColors.primarySurface, shape: BoxShape.circle),
+            child: Icon(anatomyIcon(model), color: AppColors.primary, size: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${model.name} 3D Model', style: AppTextStyles.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text('Detected from this reviewer', style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            onPressed: () {
+              if (isPro) {
+                context.push('${AppRoutes.anatomyViewer}?modelId=${model.id}');
+              } else {
+                context.push(AppRoutes.paywall);
+              }
+            },
+            icon: Icon(isPro ? Icons.view_in_ar_rounded : Icons.lock_rounded, size: 18),
+            label: Text(isPro ? 'Open' : 'Pro'),
+          ),
+        ],
+      ),
     );
   }
 
